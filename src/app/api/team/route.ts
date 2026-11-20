@@ -19,7 +19,7 @@ export const POST = handle(async (req: Request) => {
   let uid = `member-${newId()}`;
   let setupLink: string | undefined;
   if (firebaseConfigured()) {
-    const auth = adminAuth();
+    const auth = await adminAuth();
     const user = await auth.getUserByEmail(input.email).catch(() => auth.createUser({ email: input.email, displayName: input.name }));
     uid = user.uid;
     // A one-time link the admin shares with the new teammate to set their password (no email service needed).

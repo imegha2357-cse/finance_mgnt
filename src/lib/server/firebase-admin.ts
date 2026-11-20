@@ -1,6 +1,5 @@
 import "server-only";
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
@@ -46,6 +45,13 @@ function adminApp(): App {
   return app;
 }
 
-export const adminAuth = () => getAuth(adminApp());
+/**
+ * Loaded on first use only. firebase-admin/auth pulls in jwks-rsa → jose (ESM-only), which some serverless
+ * Node runtimes cannot require(); demo mode never touches it, so it must not be loaded at module import.
+ */
+export async function adminAuth() {
+  const { getAuth } = await import("firebase-admin/auth");
+  return getAuth(adminApp());
+}
 export const adminDb = () => getFirestore(adminApp());
 export const adminStorage = () => getStorage(adminApp());

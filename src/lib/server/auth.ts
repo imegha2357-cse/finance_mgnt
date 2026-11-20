@@ -22,7 +22,7 @@ export async function verifyCaller(req: Request): Promise<{ uid: string; email: 
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   if (!token) throw new HttpError(401, "Sign in required", "unauthenticated");
   try {
-    const d = await adminAuth().verifyIdToken(token);
+    const d = await (await adminAuth()).verifyIdToken(token);
     return { uid: d.uid, email: d.email ?? "", name: (d.name as string) ?? d.email ?? "User" };
   } catch {
     throw new HttpError(401, "Session expired, please sign in again", "unauthenticated");
