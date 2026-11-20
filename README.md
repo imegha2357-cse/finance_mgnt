@@ -95,3 +95,14 @@ Store               src/lib/server/store.ts
 - **Tables:** sticky headers, a Comfortable/Compact density setting, and 6-month sparklines on the Customers and Vendors lists.
 - **States:** skeleton loading, empty states with a first action, and subtle motion that respects `prefers-reduced-motion`.
 - **Mobile:** bottom tab bar on phones.
+
+## India compliance (v4)
+
+- **GST 2.0 (from 22 Sep 2025):** the rates offered are 0/5/18/40%, plus 3% (gold) and 0.25% (rough diamonds). 12% and 28% are accepted only on documents dated before 22 Sep 2025, and the server rejects them after that date. See `src/lib/gst.ts`.
+- **TDS under the Income Tax Act, 2025 (Section 393):** pick the category on a bill. TDS is worked out on the value before GST and rounded to the rupee, and is posted to *2300 TDS payable*. The vendor is paid the net amount. Record the challan as a transaction to "TDS deposit". See `src/lib/tds.ts`.
+- **MSME Sec 43B(h):** vendors carry their Udyam type and whether there is a written agreement. Bills get a pay-by date (15 days, or up to 45 with an agreement), with alerts in "Needs attention".
+- **Invoices:** UPI QR (scan-to-pay, amount filled in), bank details, round-off to the rupee (*4200 Round off*), "Original for recipient", PAN and authorised signatory.
+- **GSTR-1 JSON** (`/api/reports/gstr1?month=YYYY-MM`) in the offline-tool layout: B2B, B2CL, B2CS, CDNR and HSN split into B2B/B2C. Review it with your CA before uploading.
+- **Period lock:** Settings → "Locked up to". Every create, edit, delete or payment dated on or before that day is refused (HTTP 423).
+- **DPDP:** a `/privacy` notice template (fill in the bracketed details) and admin "Download all data" (`/api/export`).
+- **Public homepage** at `/welcome`. Signed-out visitors to `/` land there.

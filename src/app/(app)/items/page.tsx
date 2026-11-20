@@ -4,7 +4,7 @@ import { Package } from "lucide-react";
 import { useAuth, useData } from "@/components/auth-provider";
 import { Guard } from "@/components/guard";
 import { Badge, Button, Empty, ErrorNote, Field, Input, ListHeader, ListTable, Loading, Modal, Select, Td, Th, useToast } from "@/components/ui";
-import { GST_RATES } from "@/lib/gst";
+import { GST_RATES, SPECIAL_RATES } from "@/lib/gst";
 import { money } from "@/lib/format";
 import { can } from "@/lib/permissions";
 import type { Item } from "@/lib/types";
@@ -33,7 +33,7 @@ function ItemModal({ existing, onClose, onSaved }: { existing?: Item; onClose: (
         <Field label="Name*"><Input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label={f.kind === "goods" ? "HSN code" : "SAC code"}><Input value={f.hsn} onChange={(e) => setF({ ...f, hsn: e.target.value })} /></Field>
         <Field label="Selling rate (₹)"><Input type="number" min="0" step="0.01" value={f.rate} onChange={(e) => setF({ ...f, rate: Number(e.target.value) })} /></Field>
-        <Field label="GST rate"><Select value={f.gstRate} onChange={(e) => setF({ ...f, gstRate: Number(e.target.value) })}>{GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}</Select></Field>
+        <Field label="GST rate"><Select value={f.gstRate} onChange={(e) => setF({ ...f, gstRate: Number(e.target.value) })}>{[...GST_RATES, ...SPECIAL_RATES].map((r) => <option key={r} value={r}>{r}%{r === 40 ? " (sin / luxury)" : r === 3 ? " (gold, jewellery)" : r === 0.25 ? " (rough diamonds)" : ""}</option>)}</Select></Field>
       </form>
     </Modal>
   );

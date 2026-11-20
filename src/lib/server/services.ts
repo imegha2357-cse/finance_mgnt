@@ -3,9 +3,10 @@ import { getStore, newId, type Op } from "./store";
 import { HttpError } from "./http";
 import { createPaymentLink, paymentLinksEnabled } from "./razorpay";
 import {
-  ACCOUNTS, AP, AR, BANK, EQUITY, INPUT_GST, OUTPUT_GST, REIMB, SALES, accountName, accountType, suggestAccount,
+  ACCOUNTS, AP, AR, BANK, EQUITY, INPUT_GST, OUTPUT_GST, REIMB, ROUND_OFF, SALES, TDS_PAYABLE, accountName, accountType, suggestAccount,
 } from "../accounts";
-import { computeTax, round2, stateFromGstin, upcomingComplianceDates } from "../gst";
+import { computeTax, rateProblem, round2, stateFromGstin, upcomingComplianceDates } from "../gst";
+import { msmeDeadline, tdsOn, tdsSection } from "../tds";
 import { addDays, addMonths, fiscalYear, fmtDate, today as todayIst } from "../format";
 import { can } from "../permissions";
 import {
@@ -18,6 +19,22 @@ import {
 const nowIso = () => new Date().toISOString();
 const db = () => getStore();
 const SYSTEM = (orgId: string): SessionUser => ({ uid: "system", name: "System", email: "", role: "admin", orgId });
+
+/** After returns are filed the books are locked; nothing dated on or before the lock date may change. */
+async function assertOpen(orgId: string, ...dates: (string | undefined)[]) {
+  const lock = (await getOrg(orgId)).lockedUntil;
+  if (!lock) return;
+  const hit = dates.find((d) => d && d <= lock);
+  if (hit) throw new HttpError(423, `Books are locked up to ${fmtDate(lock)} because returns for that period are filed. An admin can change the lock date in Settings.`, "locked");
+}
+
+/** GST 2.0: 12% and 28% are not valid on documents dated from 22 Sep 2025; 40% is not valid before. */
+function checkRates(items: LineItem[], date: string) {
+  for (const it of items) {
+    const p = rateProblem(it.gstRate, date);
+    if (p) throw new HttpError(400, `${it.description}: ${p}`, "gst_rate");
+  }
+}
 
 // ───────────────────────── org, numbering & audit ─────────────────────────
 
@@ -73,15 +90,19 @@ function txnEntry(t: Transaction): JournalEntry {
 
 /** Input GST is claimable only from registered vendors; otherwise the tax is part of the cost. */
 function billEntry(b: Bill) {
+  const tds = b.tdsAmount ?? 0;
+  // TDS withheld is owed to the government, not the vendor.
+  const credits = tds > 0 ? [cr(AP, b.total - tds), cr(TDS_PAYABLE, tds)] : [cr(AP, b.total)];
   const lines = b.vendorGstin
-    ? [dr(b.account, b.subtotal), dr(INPUT_GST, taxOf(b)), cr(AP, b.total)]
-    : [dr(b.account, b.total), cr(AP, b.total)];
+    ? [dr(b.account, b.subtotal), dr(INPUT_GST, taxOf(b)), ...credits]
+    : [dr(b.account, b.total), ...credits];
   return entry(`bill-${b.id}`, b.billDate, `Bill ${b.billNumber} from ${b.vendorName}`, "bill", b.id, lines);
 }
 function invoiceEntry(inv: Invoice) {
   return entry(`inv-${inv.id}`, inv.issueDate, `Invoice ${inv.number} to ${inv.customerName}`, "invoice", inv.id,
-    [dr(AR, inv.total), cr(SALES, inv.subtotal), cr(OUTPUT_GST, taxOf(inv))]);
+    [dr(AR, inv.total), cr(SALES, inv.subtotal), cr(OUTPUT_GST, taxOf(inv)), ...roundOffLine(inv.roundOff)]);
 }
+const roundOffLine = (r?: number) => (!r ? [] : r > 0 ? [cr(ROUND_OFF, r)] : [dr(ROUND_OFF, -r)]);
 function creditNoteEntry(cn: CreditNote) {
   return entry(`cn-${cn.id}`, cn.date, `Credit note ${cn.number} on ${cn.invoiceNumber}`, "credit_note", cn.id,
     [dr(SALES, cn.subtotal), dr(OUTPUT_GST, taxOf(cn)), cr(AR, cn.total)]);
@@ -89,7 +110,7 @@ function creditNoteEntry(cn: CreditNote) {
 
 // ───────────────────────── parties ─────────────────────────
 
-export interface PartyInput { type: "vendor" | "customer"; name: string; gstin?: string; stateCode?: string; email?: string; phone?: string; pan?: string }
+export interface PartyInput { type: "vendor" | "customer"; name: string; gstin?: string; stateCode?: string; email?: string; phone?: string; pan?: string; msme?: "" | Party["msme"]; udyam?: string; msmeAgreement?: boolean }
 
 async function partyFields(s: SessionUser, input: Omit<PartyInput, "type">) {
   const gstin = input.gstin?.trim().toUpperCase() || undefined;
@@ -97,6 +118,8 @@ async function partyFields(s: SessionUser, input: Omit<PartyInput, "type">) {
     name: input.name.trim(), gstin,
     stateCode: gstin ? stateFromGstin(gstin) : input.stateCode || (await getOrg(s.orgId)).stateCode,
     email: input.email || undefined, phone: input.phone || undefined, pan: input.pan?.toUpperCase() || undefined,
+    msme: input.msme || undefined, udyam: input.msme ? input.udyam?.toUpperCase() || undefined : undefined,
+    msmeAgreement: input.msme ? Boolean(input.msmeAgreement) : undefined,
   };
 }
 
@@ -159,6 +182,7 @@ export async function deleteItem(s: SessionUser, id: string) {
 export interface TxnInput { date: string; description: string; partyName?: string; amount: number; direction: TxnDirection; account?: string; source: TxnSource; receipt?: boolean; notes?: string }
 
 export async function createTransaction(s: SessionUser, input: TxnInput, extra: Partial<Transaction> = {}) {
+  await assertOpen(s.orgId, extra.date ?? input.date);
   const suggestion = suggestAccount(input.description, input.direction);
   const account = input.account || suggestion.account;
   if (!accountType(account)) throw new HttpError(400, "Unknown account");
@@ -188,6 +212,7 @@ export interface TxnPatch { description?: string; amount?: number; date?: string
 export async function updateTransaction(s: SessionUser, id: string, patch: TxnPatch) {
   const t = await db().get<Transaction>(s.orgId, "transactions", id);
   if (!t) throw new HttpError(404, "Transaction not found");
+  await assertOpen(s.orgId, t.date, patch.date);
   const finance = can(s.role, "txn:edit");
   const isOwner = t.createdBy === s.uid;
   const coreEdit = patch.description !== undefined || patch.amount !== undefined || patch.date !== undefined || patch.partyName !== undefined;
@@ -216,6 +241,7 @@ export async function deleteTransaction(s: SessionUser, id: string) {
   if (!can(s.role, "txn:edit") && !own) throw new HttpError(403, "You cannot delete this transaction");
   if (t.linkedType) throw new HttpError(400, "Payments are removed from their invoice, bill or claim");
   if (t.reimbursedAt) throw new HttpError(400, "Reimbursed claims cannot be deleted");
+  await assertOpen(s.orgId, t.date);
   const ops: Op[] = [del("transactions", id), del("journal", `txn-${id}`)];
   if (t.bankLineId) {
     const line = await db().get<BankLine>(s.orgId, "bank_lines", t.bankLineId);
@@ -233,6 +259,7 @@ export async function reimburseClaim(s: SessionUser, id: string, opts: PaymentOp
   if (t.status !== "posted") throw new HttpError(400, "Approve the claim before reimbursing it");
   if (t.reimbursedAt) throw new HttpError(400, "Already reimbursed");
   const date = opts.date ?? todayIst();
+  await assertOpen(s.orgId, date);
   const pay: Transaction = {
     id: newId(), date, description: `Reimbursement: ${t.description}`, partyName: t.partyName, amount: t.amount, direction: "out",
     account: REIMB, source: "bank", receipt: true, status: "posted", linkedType: "reimbursement", linkedId: t.id,
@@ -268,7 +295,7 @@ export async function readReceipt(s: SessionUser, id: string) {
 
 // ───────────────────────── bills (accounts payable) ─────────────────────────
 
-export interface BillInput { vendorId: string; billNumber: string; billDate: string; dueDate: string; account: string; items: LineItem[] }
+export interface BillInput { vendorId: string; billNumber: string; billDate: string; dueDate: string; account: string; items: LineItem[]; tdsSection?: string }
 export interface PaymentOpts { date?: string; mode?: PaymentMode; reference?: string; amount?: number }
 
 async function buildBill(s: SessionUser, input: BillInput, existing?: Bill): Promise<Bill> {
@@ -276,16 +303,21 @@ async function buildBill(s: SessionUser, input: BillInput, existing?: Bill): Pro
   const vendor = await db().get<Party>(s.orgId, "parties", input.vendorId);
   if (!vendor || vendor.type !== "vendor") throw new HttpError(400, "Choose a vendor");
   if (accountType(input.account) !== "expense") throw new HttpError(400, "Bills must use an expense account");
+  await assertOpen(s.orgId, input.billDate, existing?.billDate);
+  checkRates(input.items, input.billDate);
   const dupe = (await db().list<Bill>(s.orgId, "bills")).find(
     (b) => b.id !== existing?.id && b.vendorId === vendor.id && b.billNumber.trim().toLowerCase() === input.billNumber.trim().toLowerCase() && b.status !== "rejected",
   );
   if (dupe) throw new HttpError(409, `Possible duplicate: bill ${dupe.billNumber} from ${vendor.name} already exists`, "duplicate");
   // Purchase: supplier is the vendor, place of supply is our state.
   const tax = computeTax(input.items, vendor.stateCode, org.stateCode);
+  const tds = tdsSection(input.tdsSection || undefined);
   return {
     id: existing?.id ?? newId(), vendorId: vendor.id, vendorName: vendor.name, vendorGstin: vendor.gstin, billNumber: input.billNumber.trim(),
     billDate: input.billDate, dueDate: input.dueDate, account: input.account, items: input.items, ...tax,
     status: "pending_approval", approvalsRequired: tax.total >= org.approvalThreshold ? 2 : 1, approvals: [], amountPaid: 0,
+    tdsSection: tds?.code, tdsRate: tds?.rate, tdsAmount: tds ? tdsOn(tax.subtotal, tds.code) : undefined,
+    msmeDeadline: msmeDeadline(input.billDate, input.dueDate, vendor),
     createdBy: existing?.createdBy ?? s.uid, createdAt: existing?.createdAt ?? nowIso(),
   };
 }
@@ -313,6 +345,7 @@ export async function deleteBill(s: SessionUser, id: string) {
   const b = await db().get<Bill>(s.orgId, "bills", id);
   if (!b) throw new HttpError(404, "Bill not found");
   if (b.status !== "pending_approval" && b.status !== "rejected") throw new HttpError(400, "Only unapproved or rejected bills can be deleted");
+  await assertOpen(s.orgId, b.billDate);
   await db().putMany(s.orgId, [del("bills", id)]);
   await audit(s, "bill.deleted", `${b.vendorName} ${b.billNumber}`);
 }
@@ -336,6 +369,7 @@ export async function decideBill(s: SessionUser, id: string, decision: "approved
   if (!b) throw new HttpError(404, "Bill not found");
   const blocker = approvalBlocker(s, b);
   if (blocker) throw new HttpError(403, blocker);
+  await assertOpen(s.orgId, b.billDate); // the final approval posts to the ledger on the bill date
   b.approvals.push({ by: s.uid, byName: s.name, role: s.role, at: nowIso(), decision, comment: comment || undefined });
   const ops: Op[] = [];
   if (decision === "rejected") b.status = "rejected";
@@ -359,6 +393,7 @@ export async function payBill(s: SessionUser, id: string, opts: PaymentOpts = {}
   if (amount <= 0) throw new HttpError(400, "Enter an amount above zero");
   if (amount > balance + 0.001) throw new HttpError(400, `Amount is more than the balance due (${balance.toFixed(2)})`);
   const date = opts.date ?? todayIst();
+  await assertOpen(s.orgId, date);
   const t: Transaction = {
     id: newId(), date, description: `Payment: ${b.vendorName} bill ${b.billNumber}`, partyName: b.vendorName,
     amount, direction: "out", account: AP, source: "bank", receipt: true, status: "posted",
@@ -382,7 +417,9 @@ async function buildInvoice(s: SessionUser, input: InvoiceInput, existing?: Invo
   const cust = await db().get<Party>(s.orgId, "parties", input.customerId);
   if (!cust || cust.type !== "customer") throw new HttpError(400, "Choose a customer");
   const pos = input.placeOfSupply || cust.stateCode;
-  const tax = computeTax(input.items, org.stateCode, pos);
+  await assertOpen(s.orgId, input.issueDate, existing?.issueDate);
+  checkRates(input.items, input.issueDate);
+  const tax = computeTax(input.items, org.stateCode, pos, { roundOff: org.roundOff !== false });
   const id = existing?.id ?? newId();
   return {
     id, number: existing?.number ?? `DRAFT-${id.slice(0, 6).toUpperCase()}`, customerId: cust.id, customerName: cust.name, customerGstin: cust.gstin,
@@ -430,6 +467,7 @@ export async function updateInvoice(s: SessionUser, id: string, input: InvoiceIn
 export async function deleteInvoice(s: SessionUser, id: string) {
   const inv = await getInvoice(s.orgId, id);
   if (inv.status !== "draft") throw new HttpError(400, "Only drafts can be deleted; void a sent invoice instead");
+  await assertOpen(s.orgId, inv.issueDate);
   await db().putMany(s.orgId, [del("invoices", id)]);
   await audit(s, "invoice.deleted", inv.number);
 }
@@ -454,6 +492,7 @@ export async function recordInvoicePayment(s: SessionUser, id: string, opts: Pay
   if (amount <= 0) throw new HttpError(400, "Enter an amount above zero");
   if (amount > balance + 0.001) throw new HttpError(400, `Amount is more than the balance due (${balance.toFixed(2)})`);
   const date = opts.date ?? todayIst();
+  await assertOpen(s.orgId, date);
   const t: Transaction = {
     id: newId(), date, description: `Receipt: invoice ${inv.number} from ${inv.customerName}`, partyName: inv.customerName,
     amount, direction: "in", account: AR, source: "bank", receipt: true, status: "posted",
@@ -476,6 +515,7 @@ export async function invoiceAction(s: SessionUser, id: string, action: "send" |
     ops = await issue(s, inv);
   } else {
     if (inv.status === "void") throw new HttpError(400, "Already void");
+    await assertOpen(s.orgId, inv.issueDate);
     if (inv.status === "draft") throw new HttpError(400, "Delete a draft instead of voiding it");
     if (inv.amountPaid > 0 || inv.amountCredited > 0) throw new HttpError(400, "This invoice has payments or credit notes; issue a credit note for the balance instead");
     inv.status = "void";
@@ -494,6 +534,8 @@ export async function createCreditNote(s: SessionUser, input: CreditNoteInput) {
   const org = await getOrg(s.orgId);
   const inv = await getInvoice(s.orgId, input.invoiceId);
   if (inv.status !== "sent") throw new HttpError(400, "Credit notes apply to sent invoices with a balance due");
+  await assertOpen(s.orgId, input.date);
+  checkRates(input.items, inv.issueDate); // a credit note carries the original invoice's rates
   const tax = computeTax(input.items, org.stateCode, inv.placeOfSupply);
   const balance = invoiceBalance(inv);
   if (tax.total > balance + 0.001) throw new HttpError(400, `Credit (${tax.total.toFixed(2)}) is more than the balance due (${balance.toFixed(2)})`);
@@ -925,6 +967,12 @@ export async function buildInbox(s: SessionUser): Promise<InboxItem[]> {
     for (const b of bills.filter((x) => x.status === "approved" && x.dueDate <= soon)) {
       items.push({ kind: "bill_due", title: `Pay ${b.vendorName}`, detail: b.dueDate < today ? `Overdue since ${fmtDate(b.dueDate)}` : `Due ${fmtDate(b.dueDate)}`, href: `/bills?open=${b.id}`, amount: billBalance(b), dueDate: b.dueDate, severity: b.dueDate < today ? "high" : "medium" });
     }
+    // Sec 43B(h): unpaid bills from micro/small vendors must be paid by the deadline or the expense is disallowed.
+    for (const b of bills.filter((x) => x.msmeDeadline && (x.status === "approved" || x.status === "pending_approval") && x.msmeDeadline <= addDays(today, 5))) {
+      items.push({ kind: "msme_due", title: `MSME vendor: pay ${b.vendorName} by ${fmtDate(b.msmeDeadline!)}`, detail: b.msmeDeadline! < today ? "Past the Sec 43B(h) limit: this expense is not deductible until paid" : "Sec 43B(h): pay on time to keep the expense deductible this year", href: `/bills?open=${b.id}`, amount: billBalance(b), dueDate: b.msmeDeadline, severity: "high" });
+    }
+    const tdsDue = round2((await journal(s.orgId)).flatMap((e) => e.lines).filter((l) => l.account === TDS_PAYABLE).reduce((a, l) => a + l.credit - l.debit, 0));
+    if (tdsDue > 0.5) items.push({ kind: "compliance", title: "TDS deducted, not yet deposited", detail: "Deposit with challan by the 7th of next month (Sec 393). Record the deposit as a transaction to account 2300.", href: "/transactions?new=1", amount: tdsDue, severity: "medium" });
     for (const c of upcomingComplianceDates(today)) items.push({ kind: "compliance", title: `${c.label} due`, detail: c.detail, href: "/reports?tab=gst", dueDate: c.date, severity: "low" });
   }
   const rank = { high: 0, medium: 1, low: 2 };

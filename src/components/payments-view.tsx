@@ -12,8 +12,8 @@ import { NoAccess } from "./ui";
 
 type Kind = "received" | "made";
 const META = {
-  received: { title: "All Received Payments", party: "Customer Name", ref: "Invoice#", base: "/payments-received", refBase: "/invoices", need: "invoice:update" as const, empty: "No payments received, yet", emptyDetail: "Payments appear here once customers pay their invoices." },
-  made: { title: "All Payments Made", party: "Vendor Name", ref: "Bill#", base: "/payments-made", refBase: "/bills?open=", need: "bill:pay" as const, empty: "No vendor payments, yet", emptyDetail: "Approved bills you pay are listed here." },
+  received: { title: "Payments received", party: "Customer", ref: "Invoice no.", base: "/payments-received", refBase: "/invoices", need: "invoice:update" as const, empty: "No payments received, yet", emptyDetail: "Payments appear here once customers pay their invoices." },
+  made: { title: "Payments made", party: "Vendor", ref: "Bill no.", base: "/payments-made", refBase: "/bills?open=", need: "bill:pay" as const, empty: "No vendor payments, yet", emptyDetail: "Approved bills you pay are listed here." },
 };
 
 /** Payments Received / Payments Made list. */
@@ -35,7 +35,7 @@ export function PaymentsList({ kind }: { kind: Kind }) {
       </div>
       <ErrorNote message={error} />
       {loading && !data ? <Loading /> : rows.length === 0 ? <Empty title={m.empty} detail={m.emptyDetail} /> : (
-        <ListTable head={<tr><Th>Date</Th><Th>Payment#</Th><Th>Reference#</Th><Th>{m.party}</Th><Th>{m.ref}</Th><Th>Mode</Th><Th right>Amount</Th></tr>}>
+        <ListTable head={<tr><Th>Date</Th><Th>Payment no.</Th><Th>Reference#</Th><Th>{m.party}</Th><Th>{m.ref}</Th><Th>Mode</Th><Th right>Amount</Th></tr>}>
           {rows.map((p) => (
             <tr key={p.id}>
               <Td className="whitespace-nowrap">{fmtDate(p.date)}</Td>
@@ -98,7 +98,7 @@ export function RecordPayment({ kind }: { kind: Kind }) {
 
   if (user && !can(user.role, m.need)) return <NoAccess what="recording payments" />;
   return (
-    <FormPage title={kind === "received" ? "Record Payment" : "Pay Vendor Bill"} icon={<HandCoins className="size-5" />} onClose={() => router.push(m.base)}
+    <FormPage title={kind === "received" ? "Record payment" : "Pay Vendor Bill"} icon={<HandCoins className="size-5" />} onClose={() => router.push(m.base)}
       footer={<><Button variant="primary" loading={busy} onClick={submit}>Save</Button><Button onClick={() => router.push(m.base)}>Cancel</Button>
         {doc && <div className="ml-auto text-sm font-semibold">Amount: {money(amt || 0)}</div>}</>}>
       <div className="border-b border-line bg-canvas px-6 py-4">
@@ -120,8 +120,8 @@ export function RecordPayment({ kind }: { kind: Kind }) {
         <FormRow label={kind === "received" ? "Amount Received (₹)" : "Payment Made (₹)"} required hint={doc ? `Balance due ${money(due)} · enter less for a part payment` : undefined}>
           <Input type="number" min="0.01" step="0.01" value={doc ? (amount === "" ? due.toFixed(2) : amount) : ""} disabled={!doc} onChange={(e) => setAmount(e.target.value)} className="num" />
         </FormRow>
-        <FormRow label="Payment Date" required><Input type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} /></FormRow>
-        <FormRow label="Payment Mode">
+        <FormRow label="Payment date" required><Input type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} /></FormRow>
+        <FormRow label="Payment mode">
           <Select value={mode} onChange={(e) => setMode(e.target.value as PaymentMode)}>{PAYMENT_MODES.map((p) => <option key={p}>{p}</option>)}</Select>
         </FormRow>
         <FormRow label="Reference#" hint="UTR, cheque number or UPI reference"><Input value={reference} onChange={(e) => setReference(e.target.value)} /></FormRow>

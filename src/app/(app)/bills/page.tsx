@@ -7,9 +7,10 @@ import { useAuth, useData } from "@/components/auth-provider";
 import { BillStatus as BillStatusText } from "@/components/status";
 import { Badge, Button, Drawer, Empty, ErrorNote, Field, ListHeader, ListTable, Loading, Td, Textarea, Th, useToast } from "@/components/ui";
 import { accountName } from "@/lib/accounts";
-import { fmtDate, money } from "@/lib/format";
+import { fmtDate, money, today } from "@/lib/format";
 import { can } from "@/lib/permissions";
 import { billBalance, type Bill, type BillStatus } from "@/lib/types";
+import { tdsLabel } from "@/lib/tds";
 
 type BillRow = Bill & { approvalBlocker: string | null };
 const STATUS: Record<BillStatus, { label: string; tone: "amber" | "blue" | "green" | "red" }> = {
@@ -49,7 +50,7 @@ function BillPanel({ bill, onClose, onChanged }: { bill: BillRow; onClose: () =>
         {canChange && <a href={`/bills/${bill.id}/edit`} className="inline-flex h-9 items-center rounded-md border border-line px-3 text-sm hover:bg-canvas">{bill.status === "rejected" ? "Edit and resubmit" : "Edit"}</a>}
         {canDecide && <Button variant="danger" loading={busy === "reject"} onClick={() => act("reject", `/api/bills/${bill.id}/approve`, { decision: "rejected", comment }, "Bill rejected")}><X className="size-4" />Reject</Button>}
         {canDecide && <Button variant="primary" loading={busy === "approve"} onClick={() => act("approve", `/api/bills/${bill.id}/approve`, { decision: "approved", comment }, "Bill approved")}><Check className="size-4" />Approve</Button>}
-        {canPay && <a href={`/payments-made/new?bill=${bill.id}`} className="inline-flex h-9 items-center rounded-md bg-accent px-3.5 text-sm font-medium text-on-accent hover:bg-accent-hover">Record Payment · {money(billBalance(bill))}</a>}
+        {canPay && <a href={`/payments-made/new?bill=${bill.id}`} className="inline-flex h-9 items-center rounded-md bg-accent px-3.5 text-sm font-medium text-on-accent hover:bg-accent-hover">Record payment · {money(billBalance(bill))}</a>}
       </>}>
       <ErrorNote message={error} />
       <div className="num text-3xl font-semibold">{money(bill.total)}</div>
@@ -60,6 +61,8 @@ function BillPanel({ bill, onClose, onChanged }: { bill: BillRow; onClose: () =>
         <dt className="text-muted">Taxable value</dt><dd>{money(bill.subtotal)}</dd>
         {bill.igst ? <><dt className="text-muted">IGST</dt><dd>{money(bill.igst)}</dd></> : <><dt className="text-muted">CGST + SGST</dt><dd>{money(bill.cgst + bill.sgst)}</dd></>}
         {bill.amountPaid > 0 && <><dt className="text-muted">Paid so far</dt><dd>{money(bill.amountPaid)}</dd></>}
+        {bill.tdsAmount ? <><dt className="text-muted">TDS deducted</dt><dd>{money(bill.tdsAmount)} <span className="text-xs text-muted">({tdsLabel(bill.tdsSection)})</span></dd></> : null}
+        {bill.msmeDeadline && bill.status !== "paid" ? <><dt className="text-muted">MSME pay-by</dt><dd className={bill.msmeDeadline < today() ? "font-medium text-out" : "font-medium"}>{fmtDate(bill.msmeDeadline)} <span className="text-xs font-normal text-muted">Sec 43B(h)</span></dd></> : null}
         <dt className="text-muted">Balance due</dt><dd className="font-medium">{money(billBalance(bill))}</dd>
         {!bill.vendorGstin && <><dt className="text-muted">Input GST</dt><dd className="text-warn">Not claimable (unregistered vendor)</dd></>}
         {bill.paidAt && <><dt className="text-muted">Paid on</dt><dd>{fmtDate(bill.paidAt)}</dd></>}
@@ -86,7 +89,7 @@ function BillPanel({ bill, onClose, onChanged }: { bill: BillRow; onClose: () =>
 
 type View = BillStatus | "all";
 const VIEWS: { value: View; label: string }[] = [
-  { value: "all", label: "All Bills" }, { value: "pending_approval", label: "Pending Approval" }, { value: "approved", label: "Open (to pay)" },
+  { value: "all", label: "All bills" }, { value: "pending_approval", label: "Pending Approval" }, { value: "approved", label: "Open (to pay)" },
   { value: "paid", label: "Paid" }, { value: "rejected", label: "Rejected" },
 ];
 
@@ -115,16 +118,16 @@ export default function BillsPage() {
       {loading && !data ? <Loading /> : rows.length === 0 ? (data?.length ?? 0) === 0
         ? <Empty icon={Receipt} title="Record your first vendor bill" detail="Bills go through approval before they can be paid, and GST from registered vendors becomes input tax credit." action={user && can(user.role, "bill:create") ? { label: "New bill", href: "/bills/new" } : undefined} />
         : <Empty title={view === "pending_approval" ? "Nothing waiting for approval" : "No bills in this view"} detail="Nothing matches this filter right now." action={{ label: "Show all bills", onClick: () => setView("all") }} /> : (
-        <ListTable head={<tr><Th>Date</Th><Th>Bill#</Th><Th>Vendor Name</Th><Th>Account</Th><Th>Status</Th><Th>Due Date</Th><Th right>Amount</Th><Th right>Balance Due</Th></tr>}>
+        <ListTable head={<tr><Th className="hidden md:table-cell">Date</Th><Th className="hidden md:table-cell">Bill no.</Th><Th>Vendor</Th><Th className="hidden xl:table-cell">Account</Th><Th>Status</Th><Th className="hidden md:table-cell">Due date</Th><Th right className="hidden md:table-cell">Amount</Th><Th right>Balance due</Th></tr>}>
           {rows.map((b) => (
             <tr key={b.id} onClick={() => router.push(`/bills?open=${b.id}&view=${view}`, { scroll: false })} className="cursor-pointer">
-              <Td className="whitespace-nowrap">{fmtDate(b.billDate)}</Td>
-              <Td className="text-accent">{b.billNumber}</Td>
-              <Td>{b.vendorName}</Td>
-              <Td className="text-muted">{accountName(b.account)}</Td>
+              <Td className="hidden whitespace-nowrap md:table-cell">{fmtDate(b.billDate)}</Td>
+              <Td className="hidden text-accent md:table-cell">{b.billNumber}</Td>
+              <Td>{b.vendorName}{b.msmeDeadline && b.status !== "paid" && <span className="ml-1.5" title={`MSME vendor: pay by ${fmtDate(b.msmeDeadline)} (Sec 43B(h))`}><Badge tone={b.msmeDeadline < today() ? "red" : "amber"}>MSME</Badge></span>}<div className="text-xs text-muted md:hidden">{b.billNumber} · due {fmtDate(b.dueDate)}</div></Td>
+              <Td className="hidden text-muted xl:table-cell">{accountName(b.account)}</Td>
               <Td><BillStatusText bill={b} />{!b.approvalBlocker && <span className="ml-1.5"><Badge tone="teal">Your turn</Badge></span>}</Td>
-              <Td className="whitespace-nowrap">{fmtDate(b.dueDate)}</Td>
-              <Td right>{money(b.total)}</Td>
+              <Td className="hidden whitespace-nowrap md:table-cell">{fmtDate(b.dueDate)}</Td>
+              <Td right className="hidden md:table-cell">{money(b.total)}</Td>
               <Td right>{money(billBalance(b))}</Td>
             </tr>
           ))}

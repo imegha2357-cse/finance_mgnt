@@ -1,11 +1,14 @@
 import "server-only";
 import { z } from "zod";
-import { isValidGstin } from "../gst";
+import { ALL_RATES, isValidGstin } from "../gst";
+import { TDS_SECTIONS } from "../tds";
 import { PAYMENT_MODES } from "../types";
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
 const gstin = z.string().trim().toUpperCase().refine((v) => v === "" || isValidGstin(v), "Invalid GSTIN").optional();
 const money = z.number().positive().max(1e10);
+/** Any GST rate; whether it is valid on the document date (GST 2.0) is checked by the service. */
+const gstRate = z.number().refine((r) => ALL_RATES.includes(r), "Not a GST rate");
 
 const partyFields = {
   name: z.string().trim().min(2, "Name is too short").max(120),
@@ -14,6 +17,9 @@ const partyFields = {
   email: z.union([z.literal(""), z.email()]).optional(),
   phone: z.string().max(20).optional(),
   pan: z.string().trim().toUpperCase().refine((v) => v === "" || /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(v), "Invalid PAN").optional(),
+  msme: z.union([z.literal(""), z.enum(["micro", "small", "medium"])]).optional(),
+  udyam: z.string().trim().toUpperCase().refine((v) => v === "" || /^UDYAM-[A-Z]{2}-\d{2}-\d{7}$/.test(v), "Udyam number looks like UDYAM-KR-03-0012345").optional(),
+  msmeAgreement: z.boolean().optional(),
 };
 export const partySchema = z.object({ type: z.enum(["vendor", "customer"]), ...partyFields });
 export const partyPatchSchema = z.object(partyFields);
@@ -22,7 +28,7 @@ export const itemSchema = z.object({
   name: z.string().trim().min(2).max(120),
   hsn: z.string().max(10).optional(),
   rate: z.number().nonnegative().max(1e10),
-  gstRate: z.union([z.literal(0), z.literal(5), z.literal(12), z.literal(18), z.literal(28)]),
+  gstRate: gstRate,
   kind: z.enum(["goods", "service"]),
 });
 
@@ -54,7 +60,7 @@ const lineItem = z.object({
   hsn: z.string().max(10).optional(),
   qty: z.number().positive(),
   rate: z.number().nonnegative(),
-  gstRate: z.union([z.literal(0), z.literal(5), z.literal(12), z.literal(18), z.literal(28)]),
+  gstRate: gstRate,
 });
 
 export const billSchema = z.object({
@@ -64,6 +70,7 @@ export const billSchema = z.object({
   dueDate: date,
   account: z.string(),
   items: z.array(lineItem).min(1),
+  tdsSection: z.union([z.literal(""), z.enum(TDS_SECTIONS.map((t) => t.code) as [string, ...string[]])]).optional(),
 }).refine((b) => b.dueDate >= b.billDate, { message: "Due date is before the bill date", path: ["dueDate"] });
 
 export const decisionSchema = z.object({ decision: z.enum(["approved", "rejected"]), comment: z.string().max(500).optional() });
@@ -115,6 +122,12 @@ export const orgPatchSchema = z.object({
   address: z.string().max(300).optional(),
   approvalThreshold: z.number().nonnegative().optional(),
   invoicePrefix: z.string().max(20).optional(),
+  upiId: z.string().trim().refine((v) => v === "" || /^[\w.\-]{2,256}@[a-zA-Z][a-zA-Z0-9.\-]{1,64}$/.test(v), "UPI ID looks like name@bank").optional(),
+  bankName: z.string().trim().max(80).optional(),
+  bankAccount: z.string().trim().refine((v) => v === "" || /^\d{9,18}$/.test(v), "Account number is 9–18 digits").optional(),
+  bankIfsc: z.string().trim().toUpperCase().refine((v) => v === "" || /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v), "IFSC looks like HDFC0001234").optional(),
+  roundOff: z.boolean().optional(),
+  lockedUntil: z.union([z.literal(""), date]).optional(),
 });
 
 export const bootstrapSchema = z.object({

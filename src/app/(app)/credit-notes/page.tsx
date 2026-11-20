@@ -14,12 +14,12 @@ export default function CreditNotesPage() {
   const [view, setView] = useState("all");
   return (
     <Guard need="books:read">
-      <ListHeader views={[{ value: "all", label: "All Credit Notes" }]} view={view} onView={setView}
+      <ListHeader views={[{ value: "all", label: "All credit notes" }]} view={view} onView={setView}
         newHref={user && can(user.role, "invoice:update") ? "/credit-notes/new" : undefined} />
       <p className="border-b border-line bg-canvas px-6 py-2.5 text-sm text-muted">A credit note reduces what a customer owes on a sent invoice (returns, discounts after billing, billing errors). It also reverses the GST.</p>
       <ErrorNote message={error} />
       {loading && !data ? <Loading /> : !data?.length ? <Empty title="No credit notes yet" detail="Open an unpaid invoice and choose Create Credit Note." /> : (
-        <ListTable head={<tr><Th>Date</Th><Th>Credit Note#</Th><Th>Customer Name</Th><Th>Invoice#</Th><Th>Reason</Th><Th right>Amount</Th></tr>}>
+        <ListTable head={<tr><Th>Date</Th><Th>Credit Note#</Th><Th>Customer</Th><Th>Invoice no.</Th><Th>Reason</Th><Th right>Amount</Th></tr>}>
           {data.map((c) => (
             <tr key={c.id}>
               <Td className="whitespace-nowrap">{fmtDate(c.date)}</Td>

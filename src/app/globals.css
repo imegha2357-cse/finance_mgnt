@@ -114,3 +114,9 @@ kbd {
   background: var(--surface);
   color: var(--ink);
 }
+
+/* Touch screens: controls at least 40px tall so they are easy to tap. */
+@media (pointer: coarse) {
+  button:not(.tap-sm), select, input:not([type="checkbox"]):not([type="radio"]) { min-height: 40px; }
+  td a, li > a { padding-block: 6px; display: inline-block; }
+}

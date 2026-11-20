@@ -31,8 +31,10 @@ export function Money({ value, size = "md", sign, className }: { value: number; 
 
 /** Accounting words in plain language. */
 export const GLOSSARY: Record<string, string> = {
-  Receivables: "Money your customers owe you for invoices you have sent.",
-  Payables: "Money you owe vendors for bills you have received.",
+  Receivables: "Money your customers owe you for invoices you have sent (Sundry Debtors).",
+  "To receive": "Money your customers owe you for invoices you have sent (Sundry Debtors).",
+  "To pay": "Money you owe vendors for bills you have received (Sundry Creditors), after TDS.",
+  Payables: "Money you owe vendors for bills you have received (Sundry Creditors).",
   "Input tax credit": "GST you paid on purchases from registered vendors. It is subtracted from the GST you collect.",
   "GST payable": "GST you collected on sales minus GST you paid on purchases: what you owe the government this month.",
   Runway: "How many months your cash lasts if you keep spending at the current rate.",
@@ -47,13 +49,13 @@ export const GLOSSARY: Record<string, string> = {
 };
 
 /** Hover or focus an accounting term to see what it means. */
-export function Term({ children, tip }: { children: string; tip?: string }) {
+export function Term({ children, tip, align = "left" }: { children: string; tip?: string; align?: "left" | "right" }) {
   const text = tip ?? GLOSSARY[children];
   if (!text) return <>{children}</>;
   return (
     <span tabIndex={0} className="group/term relative inline-block cursor-help border-b border-dotted border-muted/70 outline-none">
       {children}
-      <span role="tooltip" className="pointer-events-none invisible absolute left-0 top-full z-50 mt-1.5 w-64 rounded-md border border-line bg-raised px-3 py-2 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-ink opacity-0 shadow-lg transition-opacity group-hover/term:visible group-hover/term:opacity-100 group-focus/term:visible group-focus/term:opacity-100">
+      <span role="tooltip" className={`pointer-events-none absolute top-full z-50 mt-1.5 hidden w-64 rounded-md border border-line bg-raised px-3 py-2 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-ink shadow-lg group-hover/term:block group-focus/term:block ${align === "right" ? "right-0" : "left-0"}`}>
         {text}
       </span>
     </span>

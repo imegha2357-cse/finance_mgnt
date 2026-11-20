@@ -8,7 +8,17 @@ import { CashChart } from "@/components/cash-chart";
 import { Guard } from "@/components/guard";
 import { Button, ErrorNote, Field, Input, Loading, PageHeader, Select, Tabs, Td, Th, downloadText } from "@/components/ui";
 import { ACCOUNTS } from "@/lib/accounts";
-import { fiscalYear, fmtDate, money, today } from "@/lib/format";
+import { addMonths, fiscalYear, fmtDate, money, today } from "@/lib/format";
+
+const dayBefore = (iso: string) => new Date(Date.parse(iso + "T00:00:00Z") - 864e5).toISOString().slice(0, 10);
+/** Quick periods an Indian accountant reaches for (FY runs April–March). */
+const PRESETS: { label: string; range: () => [string, string] }[] = [
+  { label: "This month", range: () => [today().slice(0, 8) + "01", today()] },
+  { label: "Last month", range: () => { const first = today().slice(0, 8) + "01"; return [addMonths(first, -1), dayBefore(first)]; } },
+  { label: "This quarter", range: () => { const m = Number(today().slice(5, 7)); const qStart = [4, 7, 10, 1][Math.floor(((m + 8) % 12) / 3)]; const y = Number(today().slice(0, 4)); return [`${y}-${String(qStart).padStart(2, "0")}-01`, today()]; } },
+  { label: "This financial year", range: () => [fiscalYear().start, today()] },
+  { label: "Last financial year", range: () => { const f = fiscalYear(); return [addMonths(f.start, -12), dayBefore(f.start)]; } },
+];
 
 type Row = { code: string; name: string; amount: number };
 type Pnl = { from: string; to: string; income: Row[]; expenses: Row[]; totalIncome: number; totalExpenses: number; netProfit: number };
@@ -62,6 +72,11 @@ export default function ReportsPage() {
       downloadText(await api<string>(`/api/reports/export${q}`), `${type ?? "journal"}-${today()}.csv`);
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
+  const downloadGstr1 = async () => {
+    setBusy(true); setErr(null);
+    try { downloadText(await api<string>(`/api/reports/gstr1?month=${month}`, { headers: { accept: "application/json" } }).then((d) => (typeof d === "string" ? d : JSON.stringify(d, null, 2))), `GSTR1_${month}.json`); }
+    catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
   const showRange = tab === "pnl" || tab === "gl";
   const showAsOf = tab === "bs" || tab === "tb" || tab === "ar" || tab === "ap";
 
@@ -76,14 +91,22 @@ export default function ReportsPage() {
           </>} />
         <div className="no-print">
           <Tabs value={tab} onChange={setTab} tabs={[
-            { value: "pnl", label: "Profit & Loss" }, { value: "bs", label: "Balance Sheet" }, { value: "tb", label: "Trial Balance" }, { value: "gl", label: "General Ledger" },
-            { value: "ar", label: "Receivables Ageing" }, { value: "ap", label: "Payables Ageing" }, { value: "cashflow", label: "Cash Flow" }, { value: "gst", label: "GST Summary" },
+            { value: "pnl", label: "Profit & loss" }, { value: "bs", label: "Balance sheet" }, { value: "tb", label: "Trial balance" }, { value: "gl", label: "Ledger" },
+            { value: "ar", label: "To receive (ageing)" }, { value: "ap", label: "To pay (ageing)" }, { value: "cashflow", label: "Cash flow" }, { value: "gst", label: "GST" },
           ]} />
           <div className="mb-4 flex flex-wrap gap-3">
             {tab === "gl" && <Field label="Account" className="w-64"><Select value={account} onChange={(e) => setAccount(e.target.value)}>{ACCOUNTS.map((a) => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}</Select></Field>}
-            {showRange && <><Field label="From"><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field><Field label="To"><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field></>}
+            {showRange && <>
+              <Field label="Period"><Select aria-label="Quick period" value="" onChange={(e) => { const p = PRESETS.find((x) => x.label === e.target.value)?.range(); if (p) { setFrom(p[0]); setTo(p[1]); } }} className="w-44!">
+                <option value="">Choose…</option>{PRESETS.map((p) => <option key={p.label}>{p.label}</option>)}
+              </Select></Field>
+              <Field label="From"><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field><Field label="To"><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
+            </>}
             {showAsOf && <Field label="As of" className="w-48"><Input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} /></Field>}
-            {tab === "gst" && <Field label="Tax period" className="w-48"><Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} /></Field>}
+            {tab === "gst" && <>
+              <Field label="Tax period" className="w-48"><Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} /></Field>
+              <div className="flex items-end"><Button loading={busy} onClick={downloadGstr1}><Download className="size-4" />GSTR-1 JSON for the GST portal</Button></div>
+            </>}
           </div>
         </div>
         <ErrorNote message={error ?? err} />
@@ -147,7 +170,7 @@ export default function ReportsPage() {
                   <thead className="border-b border-line"><tr><Th>Section</Th><Th right>Docs</Th><Th right>Taxable value</Th><Th right>CGST</Th><Th right>SGST</Th><Th right>IGST</Th></tr></thead>
                   <tbody className="divide-y divide-line">{rows.map(([label, x, n]) => <tr key={label}><Td className="font-medium">{label}</Td><Td right>{n}</Td><Td right>{money(x.taxable)}</Td><Td right>{money(x.cgst)}</Td><Td right>{money(x.sgst)}</Td><Td right>{money(x.igst)}</Td></tr>)}</tbody>
                 </table></div>
-                <p className="text-xs text-muted">Filing GSTR-1 / GSTR-3B directly needs a GSP (GST Suvidha Provider) integration; until then export this summary for your CA.</p>
+                <p className="text-xs text-muted">Download the GSTR-1 JSON above and upload it in the GST portal&apos;s offline tool (or send it to your CA). Before filing GSTR-3B, accept or reject supplier invoices in IMS: anything left untouched when GSTR-2B is generated on the 14th is treated as accepted. Direct filing needs a GSP integration.</p>
               </div>); })()}
           </>
         )}

@@ -30,6 +30,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-md">
+        <a href="/welcome" className="mb-4 inline-block text-sm text-muted hover:text-ink">← About Ledgerly</a>
         <div className="mb-6 flex items-center gap-2">
           <div className="grid size-9 place-items-center rounded-lg bg-accent font-bold text-on-accent">L</div>
           <div>

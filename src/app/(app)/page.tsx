@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Building2, Wallet, Landmark, CalendarClock, CheckCircle2, ChevronRight, FileWarning, PlusCircle, Receipt } from "lucide-react";
+import { AlertTriangle, Factory, Building2, Wallet, Landmark, CalendarClock, CheckCircle2, ChevronRight, FileWarning, PlusCircle, Receipt } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useAuth, useData } from "@/components/auth-provider";
 import { IN_COLOR, OUT_COLOR } from "@/components/cash-chart";
@@ -17,6 +17,7 @@ type Dash = DashboardData & { limited: boolean };
 
 const KIND_ICON: Record<InboxItem["kind"], React.ElementType> = {
   bill_approval: CheckCircle2, missing_receipt: Receipt, overdue_invoice: AlertTriangle, bill_due: FileWarning, compliance: CalendarClock,
+  msme_due: Factory,
   reimbursement: Wallet, reconcile: Landmark,
 };
 const monthTick = (m: string) => new Date(m + "-01T00:00:00Z").toLocaleDateString("en-IN", { month: "short", timeZone: "UTC" });
@@ -84,10 +85,10 @@ export default function Dashboard() {
   const { user, org } = useAuth();
   const router = useRouter();
   const { data, error, loading, reload, updatedAt } = useData<Dash>("/api/dashboard");
-  const [tab, setTab] = useState<"dashboard" | "inbox">("dashboard");
+  const [showAll, setShowAll] = useState(false);
   if (loading && !data) return <Loading />;
   if (!data || !user) return <div className="p-6"><ErrorNote message={error} /></div>;
-  const showTab = data.limited ? "inbox" : tab;
+  const showTab = data.limited ? "inbox" : "dashboard";
   const f = data.fiscal;
 
   return (
@@ -101,12 +102,6 @@ export default function Dashboard() {
             <div className="text-sm text-muted">{org?.name}</div>
           </div>
           <div className="ml-auto self-start"><UpdatedAgo at={updatedAt} onRefresh={reload} refreshing={loading} /></div>
-        </div>
-        <div className="mt-5 flex gap-6 text-[15px]">
-          {!data.limited && <button onClick={() => setTab("dashboard")} className={cx("-mb-px border-b-2 pb-2.5", showTab === "dashboard" ? "border-accent font-medium" : "border-transparent text-muted hover:text-ink")}>Dashboard</button>}
-          <button onClick={() => setTab("inbox")} className={cx("-mb-px flex items-center gap-1.5 border-b-2 pb-2.5", showTab === "inbox" ? "border-accent font-medium" : "border-transparent text-muted hover:text-ink")}>
-            Needs attention {data.inbox.length > 0 && <span className="rounded-full bg-out px-1.5 text-[11px] font-semibold text-on-accent">{data.inbox.length}</span>}
-          </button>
         </div>
       </div>
 
@@ -138,8 +133,8 @@ export default function Dashboard() {
             {/* 1. Exceptions first: what needs a decision today. */}
             {data.inbox.length > 0 && (
               <Panel title={<span className="flex items-center gap-2">Needs attention <span className="rounded-full bg-out px-1.5 text-[11px] font-semibold text-on-accent">{data.inbox.length}</span></span>}
-                action={data.inbox.length > 4 && <button onClick={() => setTab("inbox")} className="text-sm text-accent">See all {data.inbox.length}</button>}>
-                <Inbox items={data.inbox.slice(0, 4)} />
+                action={data.inbox.length > 4 && <button onClick={() => setShowAll((v) => !v)} className="text-sm text-accent">{showAll ? "Show fewer" : `Show all ${data.inbox.length}`}</button>}>
+                <Inbox items={showAll ? data.inbox : data.inbox.slice(0, 4)} />
               </Panel>
             )}
 
@@ -156,18 +151,18 @@ export default function Dashboard() {
                 <div className="mt-1 text-xs text-muted">{data.gstPayable < 0 ? `Carry-forward credit ${money(-data.gstPayable)}` : "Output tax − input credit"}</div>
               </div>
               <div className="rounded-lg border border-line bg-surface px-5 py-4">
-                <div className="text-sm text-muted">{data.runwayMonths === null ? <Term>Cash flow</Term> : <Term>Runway</Term>}</div>
+                <div className="text-sm text-muted">{data.runwayMonths === null ? <Term>Cash flow</Term> : <Term tip="How many months your cash and bank balance lasts if you keep spending more than you earn at the current rate.">Cash lasts</Term>}</div>
                 <div className="num mt-1.5 text-[22px] font-semibold leading-7 tracking-[-0.01em]">{data.runwayMonths === null ? <span className="text-in">Positive</span> : <>{data.runwayMonths.toFixed(1)}<span className="ml-1 text-sm font-medium text-muted">months</span></>}</div>
-                <div className="mt-1 text-xs text-muted">{data.runwayMonths === null ? "Last 3 months: more in than out" : `Net outflow of ${money(data.monthlyBurn)} a month`}</div>
+                <div className="mt-1 text-xs text-muted">{data.runwayMonths === null ? "Last 3 months: more in than out" : `Spending ${money(data.monthlyBurn)} a month more than you earn`}</div>
               </div>
             </div>
 
             <div className="grid gap-5 lg:grid-cols-2">
-              <AgingCard title={<Term>Receivables</Term>} sub="Unpaid invoices: money customers owe you" split={data.receivablesSplit} listHref="/invoices?view=sent" newHref={can(user.role, "invoice:create") ? "/invoices/new" : undefined} />
-              <AgingCard title={<Term>Payables</Term>} sub="Unpaid bills: money you owe vendors" split={data.payablesSplit} listHref="/bills?view=approved" newHref={can(user.role, "bill:create") ? "/bills/new" : undefined} />
+              <AgingCard title={<Term tip="Money your customers owe you for invoices you have sent (Sundry Debtors).">To receive</Term>} sub="Unpaid invoices from customers" split={data.receivablesSplit} listHref="/invoices?view=sent" newHref={can(user.role, "invoice:create") ? "/invoices/new" : undefined} />
+              <AgingCard title={<Term tip="Money you owe vendors for bills you have received (Sundry Creditors), after TDS.">To pay</Term>} sub="Unpaid bills to vendors" split={data.payablesSplit} listHref="/bills?view=approved" newHref={can(user.role, "bill:create") ? "/bills/new" : undefined} />
             </div>
 
-            <Panel title={<Term>Cash flow</Term>} action={<span className="text-sm text-muted">This Fiscal Year</span>}>
+            <Panel title={<Term>Cash flow</Term>} action={<span className="text-sm text-muted">This financial year</span>}>
               <div className="grid gap-6 lg:grid-cols-[1fr_220px]">
                 <ResponsiveContainer width="100%" height={260}>
                   <AreaChart data={f.months.filter((m) => m.month <= thisMonth())} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
@@ -188,7 +183,7 @@ export default function Dashboard() {
             </Panel>
 
             <div className="grid gap-5 lg:grid-cols-2">
-              <Panel title="Income and expense" action={<span className="text-sm text-muted">This Fiscal Year</span>}>
+              <Panel title="Income and expense" action={<span className="text-sm text-muted">This financial year</span>}>
                 <div className="num mb-3 flex gap-8 text-sm">
                   <div><div className="flex items-center gap-1.5 text-muted"><span className="size-2.5 rounded-sm" style={{ background: IN_COLOR }} />Total Income</div><div className="text-lg font-semibold">{money(data.incomeExpense.reduce((a, m) => a + m.income, 0))}</div></div>
                   <div><div className="flex items-center gap-1.5 text-muted"><span className="size-2.5 rounded-sm" style={{ background: OUT_COLOR }} />Total Expenses</div><div className="text-lg font-semibold">{money(data.incomeExpense.reduce((a, m) => a + m.expense, 0))}</div></div>
@@ -206,7 +201,7 @@ export default function Dashboard() {
                 <p className="mt-2 text-xs text-muted">* Excludes GST. Counted on an <Term>Accrual</Term> basis.</p>
               </Panel>
 
-              <Panel title="Top expenses" action={<span className="text-sm text-muted">This Fiscal Year</span>}>
+              <Panel title="Top expenses" action={<span className="text-sm text-muted">This financial year</span>}>
                 {data.topExpenses.length === 0 ? <div className="py-10 text-center text-sm text-muted">No expense recorded for this fiscal year</div> : (
                   <ul className="space-y-4">
                     {data.topExpenses.map((e) => (

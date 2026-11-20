@@ -180,9 +180,12 @@ export function Spinner() {
   return <div className="flex justify-center py-8 text-muted"><Loader2 className="size-5 animate-spin" /></div>;
 }
 
+/** Error banner. It scrolls itself into view, so a failed save at the bottom of a long form is never missed. */
 export function ErrorNote({ message }: { message: string | null }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (message) ref.current?.scrollIntoView({ block: "center", behavior: "smooth" }); }, [message]);
   if (!message) return null;
-  return <div className="mb-3 rounded-lg border border-out/30 bg-out-soft px-3 py-2 text-sm text-out">{message}</div>;
+  return <div ref={ref} role="alert" className="mb-3 rounded-lg border border-out/30 bg-out-soft px-3 py-2 text-sm text-out">{message}</div>;
 }
 
 export function Th({ children, right, className }: { children?: React.ReactNode; right?: boolean; className?: string }) {
@@ -258,7 +261,7 @@ export function ListTable({ head, children }: { head: React.ReactNode; children:
   return (
     <div className="overflow-x-auto md:overflow-x-visible">
       <table className="w-full">
-        <thead className="sticky top-12 z-10 border-b border-line bg-surface shadow-[0_1px_0_var(--line)]">{head}</thead>
+        <thead className="sticky top-0 z-10 border-b border-line bg-surface shadow-[0_1px_0_var(--line)] md:top-12">{head}</thead>
         <tbody className="divide-y divide-line [&>tr:hover]:bg-hover">{children}</tbody>
       </table>
     </div>
@@ -277,6 +280,13 @@ export function FormPage({ title, icon, onClose, children, footer }: { title: st
   // Ctrl/⌘+S saves: it presses the footer's primary button (marked data-save, else the accent one).
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
+      // Esc leaves the current field first; a second Esc closes the form (so one stray keypress never loses work).
+      if (e.key === "Escape" && !document.querySelector("[role=dialog]")) {
+        const el = document.activeElement as HTMLElement | null;
+        if (el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) el.blur();
+        else onClose();
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         const f = footerRef.current;
@@ -286,7 +296,7 @@ export function FormPage({ title, icon, onClose, children, footer }: { title: st
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, []);
+  }, [onClose]);
   return (
     <div className="flex min-h-[calc(100vh-3rem)] flex-col">
       <div className="flex items-center justify-between border-b border-line px-6 py-4">
@@ -296,7 +306,7 @@ export function FormPage({ title, icon, onClose, children, footer }: { title: st
       <div className="flex-1 pb-6">{children}</div>
       <div ref={footerRef} className="sticky bottom-0 z-20 flex flex-wrap items-center gap-2 border-t border-line bg-surface px-6 py-3 shadow-[0_-2px_6px_rgba(0,0,0,0.08)]">
         {footer}
-        <span className="ml-auto hidden text-xs text-muted lg:inline"><kbd>Ctrl</kbd> <kbd>S</kbd> save · <kbd>Enter</kbd> next field · <kbd>Esc</kbd> close</span>
+        <span className="ml-auto hidden text-xs text-muted lg:inline"><kbd>Ctrl</kbd> <kbd>S</kbd> save · <kbd>Enter</kbd> next field · <kbd>Esc</kbd> twice to close</span>
       </div>
     </div>
   );
@@ -305,13 +315,14 @@ export function FormPage({ title, icon, onClose, children, footer }: { title: st
 /** Label on the left, field on the right; required labels are red with an asterisk. */
 export function FormRow({ label, required, hint, error, children }: { label: string; required?: boolean; hint?: string; error?: string; children: React.ReactNode }) {
   return (
-    <div className="grid items-start gap-2 py-2 sm:grid-cols-[180px_minmax(0,420px)]">
-      <span className={cx("pt-2 text-sm", required ? "text-out" : "text-ink")}>{label}{required && "*"}</span>
+    // A <label> around the control associates the text with the first input inside it (screen readers, tap-to-focus).
+    <label className="grid items-start gap-2 py-2 sm:grid-cols-[180px_minmax(0,420px)]">
+      <span className="pt-2 text-sm text-ink">{label}{required && <span className="ml-0.5 text-out" aria-hidden="true">*</span>}</span>
       <div>
         {children}
         {error ? <span className="mt-1 block text-xs text-out">{error}</span> : hint ? <span className="mt-1 block text-xs text-muted">{hint}</span> : null}
       </div>
-    </div>
+    </label>
   );
 }
 

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth, useData } from "@/components/auth-provider";
-import { Button, Card, ErrorNote, Field, Input, Loading, Modal, PageHeader, Select, Tabs, Td, Textarea, Th, useToast } from "@/components/ui";
+import { Button, Card, ErrorNote, Field, Input, Loading, Modal, PageHeader, Select, Tabs, Td, Textarea, Th, downloadText, useToast } from "@/components/ui";
 import { fmtDate, today } from "@/lib/format";
 import { previewInvoiceNumber } from "@/components/invoice-form";
 import { isValidGstin } from "@/lib/gst";
@@ -22,7 +22,10 @@ function OrgForm() {
       <form className="grid grid-cols-2 gap-3" onSubmit={async (e) => {
         e.preventDefault(); setBusy(true); setError(null);
         try {
-          await api("/api/org", { method: "PATCH", json: { name: f.name, gstin: f.gstin, address: f.address, approvalThreshold: Number(f.approvalThreshold), invoicePrefix: f.invoicePrefix } });
+          await api("/api/org", { method: "PATCH", json: {
+            name: f.name, gstin: f.gstin, address: f.address, approvalThreshold: Number(f.approvalThreshold), invoicePrefix: f.invoicePrefix,
+            upiId: f.upiId ?? "", bankName: f.bankName ?? "", bankAccount: f.bankAccount ?? "", bankIfsc: f.bankIfsc ?? "", roundOff: f.roundOff !== false, lockedUntil: f.lockedUntil ?? "",
+          } });
           await refresh(); toast("Settings saved");
         } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
       }}>
@@ -33,6 +36,25 @@ function OrgForm() {
         <Field label="Address" className="col-span-2"><Textarea disabled={!admin} value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
         <Field label="Second approval threshold (₹)" hint="Bills at or above this need an admin's final approval" className="col-span-2">
           <Input disabled={!admin} type="number" min="0" value={f.approvalThreshold} onChange={(e) => setF({ ...f, approvalThreshold: Number(e.target.value) })} />
+        </Field>
+        <h3 className="col-span-2 mt-4 border-t border-line pt-4 text-sm font-semibold">Payment details on invoices</h3>
+        <Field label="UPI ID" hint="Prints a scan-to-pay UPI QR code on every invoice. Free; no gateway needed." className="col-span-2">
+          <Input disabled={!admin} placeholder="yourbusiness@hdfcbank" value={f.upiId ?? ""} onChange={(e) => setF({ ...f, upiId: e.target.value.trim() })} />
+        </Field>
+        <Field label="Bank account number"><Input disabled={!admin} inputMode="numeric" value={f.bankAccount ?? ""} onChange={(e) => setF({ ...f, bankAccount: e.target.value.replace(/\s/g, "") })} /></Field>
+        <Field label="IFSC"><Input disabled={!admin} className="uppercase" value={f.bankIfsc ?? ""} onChange={(e) => setF({ ...f, bankIfsc: e.target.value.toUpperCase() })} /></Field>
+        <Field label="Bank and branch" className="col-span-2"><Input disabled={!admin} placeholder="HDFC Bank, Indiranagar" value={f.bankName ?? ""} onChange={(e) => setF({ ...f, bankName: e.target.value })} /></Field>
+        <label className="col-span-2 flex items-center gap-2 text-sm">
+          <input type="checkbox" disabled={!admin} checked={f.roundOff !== false} onChange={(e) => setF({ ...f, roundOff: e.target.checked })} className="size-4 accent-[var(--accent)]" />
+          Round invoice totals to the nearest rupee (shows a &ldquo;Round off&rdquo; line)
+        </label>
+
+        <h3 className="col-span-2 mt-4 border-t border-line pt-4 text-sm font-semibold">Lock books after filing</h3>
+        <Field label="Locked up to" hint="After GSTR-1/3B are filed, lock that period so nobody can add, edit or delete entries dated on or before this day. Leave blank to keep everything open." className="col-span-2">
+          <div className="flex gap-2">
+            <Input disabled={!admin} type="date" max={today()} value={f.lockedUntil ?? ""} onChange={(e) => setF({ ...f, lockedUntil: e.target.value })} className="w-48!" />
+            {admin && f.lockedUntil && <Button type="button" onClick={() => setF({ ...f, lockedUntil: "" })}>Unlock</Button>}
+          </div>
         </Field>
         {admin && <div className="col-span-2 flex justify-end"><Button variant="primary" loading={busy}>Save</Button></div>}
       </form>
@@ -126,6 +148,30 @@ function AuditLog() {
   );
 }
 
+/** Data portability and privacy (DPDP Act 2023): admins can download everything at any time. */
+function YourData() {
+  const { api, user } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (!user || !can(user.role, "org:manage")) return null;
+  return (
+    <Card className="mt-4 max-w-2xl p-5">
+      <h3 className="text-sm font-semibold">Your data</h3>
+      <p className="mt-1 text-sm text-muted">Download every customer, vendor, invoice, bill, transaction and ledger entry as one JSON file, for your records, your CA or to move to another system. Read how personal data is handled in the <a href="/privacy" className="text-accent underline">privacy notice</a>.</p>
+      <ErrorNote message={err} />
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button loading={busy} onClick={async () => {
+          setBusy(true); setErr(null);
+          try {
+            const d = await api<unknown>("/api/export");
+            downloadText(typeof d === "string" ? d : JSON.stringify(d, null, 2), `ledgerly-export-${today()}.json`);
+          } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+        }}>Download all data (JSON)</Button>
+      </div>
+    </Card>
+  );
+}
+
 function OrgFormKeyed() {
   const { org } = useAuth();
   // Re-mount the form when the saved org changes so it starts from fresh values.
@@ -141,7 +187,7 @@ export default function SettingsPage() {
     <div className="px-6 py-5">
       <PageHeader title="Settings" />
       <Tabs value={tab} onChange={setTab} tabs={[{ value: "org", label: "Business" }, { value: "team", label: "Team & roles" }, ...(books ? [{ value: "audit", label: "Audit log" }] : [])]} />
-      {tab === "org" && <OrgFormKeyed />}
+      {tab === "org" && <><OrgFormKeyed /><YourData /></>}
       {tab === "team" && <Team />}
       {tab === "audit" && books && <AuditLog />}
     </div>

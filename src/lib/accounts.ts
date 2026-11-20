@@ -16,9 +16,11 @@ export const ACCOUNTS: Account[] = [
   { code: "2000", name: "Accounts payable", type: "liability" },
   { code: "2100", name: "Output GST", type: "liability" },
   { code: "2200", name: "Reimbursements payable", type: "liability" },
+  { code: "2300", name: "TDS payable", type: "liability" },
   { code: "3000", name: "Owner's equity", type: "equity" },
   { code: "4000", name: "Sales", type: "income" },
   { code: "4100", name: "Other income", type: "income" },
+  { code: "4200", name: "Round off", type: "income" },
   { code: "5000", name: "Salaries and wages", type: "expense" },
   { code: "5100", name: "Rent", type: "expense" },
   { code: "5200", name: "Software and subscriptions", type: "expense" },
@@ -37,6 +39,8 @@ export const INPUT_GST = "1200";
 export const AP = "2000";
 export const OUTPUT_GST = "2100";
 export const REIMB = "2200";
+export const TDS_PAYABLE = "2300";
+export const ROUND_OFF = "4200";
 export const EQUITY = "3000";
 export const SALES = "4000";
 

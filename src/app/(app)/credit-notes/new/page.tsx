@@ -39,7 +39,7 @@ export default function NewCreditNotePage() {
 
   return (
     <Guard need="invoice:update" what="credit notes">
-      <FormPage title="New Credit Note" icon={<ReceiptText className="size-5" />} onClose={() => router.push("/credit-notes")}
+      <FormPage title="New credit note" icon={<ReceiptText className="size-5" />} onClose={() => router.push("/credit-notes")}
         footer={<><Button variant="primary" loading={busy} onClick={save} disabled={!inv}>Save Credit Note</Button><Button onClick={() => router.back()}>Cancel</Button>
           {inv && <div className={`ml-auto text-sm font-semibold ${total > balance + 0.001 ? "text-out" : ""}`}>Credit: {money(total)} of {money(balance)} due</div>}</>}>
         <form id="cn-form" onSubmit={(e) => { e.preventDefault(); void save(); }}>
@@ -53,13 +53,13 @@ export default function NewCreditNotePage() {
             </FormRow>
           </div>
           <div className="px-6 py-4">
-            <FormRow label="Credit Note Date" required><Input type="date" required value={date} max={today()} onChange={(e) => setDate(e.target.value)} /></FormRow>
+            <FormRow label="Credit note date" required><Input type="date" required value={date} max={today()} onChange={(e) => setDate(e.target.value)} /></FormRow>
             <FormRow label="Reason" required hint="e.g. goods returned, post-sale discount, billing error"><Input required minLength={3} value={reason} onChange={(e) => setReason(e.target.value)} /></FormRow>
             <div className="my-4 border-t border-line" />
             {inv ? (
               <>
                 <p className="mb-2 text-sm text-muted">Starts with the invoice&apos;s items. Reduce quantities or rates to what you are crediting, and remove rows you are not.</p>
-                <LineItemsEditor showHsn items={lines} onChange={setItems} supplierState={org?.stateCode ?? ""} placeOfSupply={inv.placeOfSupply} />
+                <LineItemsEditor showHsn items={lines} onChange={setItems} supplierState={org?.stateCode ?? ""} placeOfSupply={inv.placeOfSupply} date={inv.issueDate} />
               </>
             ) : <p className="text-sm text-muted">Choose an invoice first.</p>}
           </div>

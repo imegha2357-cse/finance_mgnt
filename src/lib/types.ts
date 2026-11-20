@@ -17,6 +17,15 @@ export interface Org {
   stateCode: string; // first two digits of GSTIN, e.g. "29" = Karnataka
   address: string;
   approvalThreshold: number; // bills at or above this need a second (admin) approval
+  /** Payment details printed on invoices. UPI ID also drives the UPI QR code. */
+  upiId?: string;
+  bankName?: string;
+  bankAccount?: string;
+  bankIfsc?: string;
+  /** Round invoice totals to the nearest rupee (default on). */
+  roundOff?: boolean;
+  /** Books are locked up to and including this date (YYYY-MM-DD), e.g. after GST returns are filed. */
+  lockedUntil?: string;
   /** Prefix for invoice numbers. `{FY}` is replaced with the financial year, e.g. "INV/{FY}/" → "INV/26-27/". */
   invoicePrefix: string;
   /** Legacy single counter, kept for display; real numbering uses per-financial-year sequences. */
@@ -43,6 +52,11 @@ export interface Party {
   email?: string;
   phone?: string;
   pan?: string;
+  /** Udyam registration. Micro and small vendors are covered by the 15/45-day rule (Sec 43B(h)). */
+  msme?: "micro" | "small" | "medium";
+  udyam?: string;
+  /** A written agreement allows up to 45 days; without one the limit is 15 days. */
+  msmeAgreement?: boolean;
   createdAt: string;
 }
 
@@ -101,6 +115,8 @@ export interface TaxBreakup {
   cgst: number;
   sgst: number;
   igst: number;
+  /** Rounding to the nearest rupee (invoices only). total already includes it. */
+  roundOff?: number;
   total: number;
 }
 
@@ -131,6 +147,12 @@ export interface Bill extends TaxBreakup {
   approvals: Approval[];
   amountPaid: number;
   paidAt?: string;
+  /** TDS deducted under Section 393 (Income Tax Act 2025). The vendor is paid total − tdsAmount. */
+  tdsSection?: string;
+  tdsRate?: number;
+  tdsAmount?: number;
+  /** Pay-by date under Sec 43B(h) when the vendor is a micro/small enterprise. */
+  msmeDeadline?: string;
   createdBy: string;
   createdAt: string;
 }
@@ -229,7 +251,7 @@ export interface AuditEvent {
 }
 
 export interface InboxItem {
-  kind: "bill_approval" | "missing_receipt" | "overdue_invoice" | "bill_due" | "compliance" | "reimbursement" | "reconcile";
+  kind: "bill_approval" | "missing_receipt" | "overdue_invoice" | "bill_due" | "msme_due" | "compliance" | "reimbursement" | "reconcile";
   title: string;
   detail: string;
   href: string;
@@ -292,5 +314,6 @@ export const invoiceBalance = (i: Pick<Invoice, "total" | "amountPaid" | "amount
   i.status === "void" || i.status === "paid" ? 0 : Math.max(0, Math.round((i.total - (i.amountPaid ?? 0) - (i.amountCredited ?? 0)) * 100) / 100);
 
 /** Balance still owed on a bill after payments. */
-export const billBalance = (b: Pick<Bill, "total" | "amountPaid" | "status">) =>
-  b.status === "paid" || b.status === "rejected" ? 0 : Math.max(0, Math.round((b.total - (b.amountPaid ?? 0)) * 100) / 100);
+/** What is still owed to the vendor: total less TDS withheld less payments. */
+export const billBalance = (b: Pick<Bill, "total" | "amountPaid" | "status"> & { tdsAmount?: number }) =>
+  b.status === "paid" || b.status === "rejected" ? 0 : Math.max(0, Math.round((b.total - (b.tdsAmount ?? 0) - (b.amountPaid ?? 0)) * 100) / 100);

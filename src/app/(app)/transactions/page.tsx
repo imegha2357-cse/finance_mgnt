@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Paperclip, Pencil, Plus, Sparkles } from "lucide-react";
 import { useAuth, useData } from "@/components/auth-provider";
 import { Badge, Button, Card, Drawer, Empty, ErrorNote, Field, Input, Loading, Modal, PageHeader, Select, Td, Textarea, Th, useToast } from "@/components/ui";
-import { ACCOUNTS, EXPENSE_ACCOUNTS, INCOME_ACCOUNTS, accountName, suggestAccount } from "@/lib/accounts";
+import { ACCOUNTS, EXPENSE_ACCOUNTS, INCOME_ACCOUNTS, TDS_PAYABLE, accountName, suggestAccount } from "@/lib/accounts";
 import { fmtDate, money, today } from "@/lib/format";
 import { can } from "@/lib/permissions";
 import type { Transaction } from "@/lib/types";
@@ -50,6 +50,7 @@ function NewTransaction({ open, onClose, onSaved }: { open: boolean; onClose: ()
               <Select value={f.account} onChange={(e) => set("account", e.target.value)}>
                 <option value="">Auto-categorise</option>
                 {(f.direction === "out" ? EXPENSE_ACCOUNTS : INCOME_ACCOUNTS).map((a) => <option key={a.code} value={a.code}>{a.name}</option>)}
+                {f.direction === "out" && !isEmployee && <optgroup label="Tax payments"><option value={TDS_PAYABLE}>TDS deposit to government (challan)</option></optgroup>}
               </Select>
             </Field>
           </>
@@ -106,7 +107,7 @@ function TxnPanel({ txn, onClose, onChange, onDeleted }: { txn: Transaction; onC
     try { await api(`/api/transactions/${txn.id}`, { method: "DELETE" }); onDeleted(txn.id); }
     catch (e) { setError((e as Error).message); setBusy(null); }
   };
-  const accounts = ACCOUNTS.filter((a) => a.type === (txn.direction === "out" ? "expense" : "income"));
+  const accounts = ACCOUNTS.filter((a) => a.type === (txn.direction === "out" ? "expense" : "income") || (txn.direction === "out" && a.code === TDS_PAYABLE));
   const claimState = txn.source === "claim" ? (txn.status === "pending_review" ? "Awaiting finance review" : txn.reimbursedAt ? `Reimbursed ${fmtDate(txn.reimbursedAt)}` : "Approved · to be reimbursed") : null;
 
   return (

@@ -1,6 +1,28 @@
 import type { LineItem, TaxBreakup } from "./types";
 
-export const GST_RATES = [0, 5, 12, 18, 28];
+/**
+ * GST 2.0 (56th GST Council): from 22 September 2025 the 12% and 28% slabs are gone.
+ * Main slabs are 5% (merit/essential) and 18% (standard), with 40% for sin and luxury goods.
+ * 3% (gold, jewellery) and 0.25% (rough diamonds) continue as special rates.
+ * Documents dated before 22 Sep 2025 may still carry the old 12% / 28% rates.
+ */
+export const GST2_FROM = "2025-09-22";
+export const GST_RATES = [0, 5, 18, 40];
+export const SPECIAL_RATES = [0.25, 3];
+export const LEGACY_RATES = [12, 28];
+export const ALL_RATES = [0, 0.25, 3, 5, 12, 18, 28, 40];
+
+/** Rates that are valid on a document dated `date` (YYYY-MM-DD), main slabs first. */
+export function ratesFor(date?: string): number[] {
+  return date && date < GST2_FROM ? [0, 5, 12, 18, 28, ...SPECIAL_RATES] : [...GST_RATES, ...SPECIAL_RATES];
+}
+/** Why a rate is not allowed on this date, or null when it is fine. */
+export function rateProblem(rate: number, date: string): string | null {
+  if (!ALL_RATES.includes(rate)) return `${rate}% is not a GST rate`;
+  if (LEGACY_RATES.includes(rate) && date >= GST2_FROM) return `${rate}% GST was removed on 22 Sep 2025 (GST 2.0). Use 5%, 18% or 40%.`;
+  if (rate === 40 && date < GST2_FROM) return "The 40% slab applies only from 22 Sep 2025";
+  return null;
+}
 
 export const STATES: Record<string, string> = {
   "01": "Jammu and Kashmir", "02": "Himachal Pradesh", "03": "Punjab", "04": "Chandigarh",
@@ -27,7 +49,7 @@ export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 10
  * Intra-state supply (supplier state = place of supply) → CGST + SGST, each half the rate.
  * Inter-state supply → IGST at the full rate.
  */
-export function computeTax(items: LineItem[], supplierState: string, placeOfSupply: string): TaxBreakup {
+export function computeTax(items: LineItem[], supplierState: string, placeOfSupply: string, opts: { roundOff?: boolean } = {}): TaxBreakup {
   const intra = supplierState === placeOfSupply;
   let subtotal = 0, cgst = 0, sgst = 0, igst = 0;
   for (const it of items) {
@@ -45,7 +67,11 @@ export function computeTax(items: LineItem[], supplierState: string, placeOfSupp
   cgst = round2(cgst);
   sgst = round2(sgst);
   igst = round2(igst);
-  return { subtotal, cgst, sgst, igst, total: round2(subtotal + cgst + sgst + igst) };
+  const exact = round2(subtotal + cgst + sgst + igst);
+  if (!opts.roundOff) return { subtotal, cgst, sgst, igst, total: exact };
+  // Invoices are usually rounded to the nearest rupee; the difference is shown as a "Round off" line.
+  const total = Math.round(exact);
+  return { subtotal, cgst, sgst, igst, roundOff: round2(total - exact), total };
 }
 
 /** Next statutory monthly due dates (TDS deposit: 7th, GSTR-1: 11th, GSTR-3B: 20th) on or after `todayIso` (YYYY-MM-DD, India time). */
@@ -58,8 +84,8 @@ export function upcomingComplianceDates(todayIso: string) {
     return { label, detail, date: d };
   };
   return [
-    make(7, "TDS deposit", "TDS deducted last month is due to the government"),
+    make(7, "TDS deposit", "TDS (Sec 393, Income Tax Act 2025) deducted last month is due to the government"),
     make(11, "GSTR-1", "Outward supplies return for last month"),
-    make(20, "GSTR-3B", "Summary return and GST payment for last month"),
+    make(20, "GSTR-3B", "Accept or reject supplier invoices in IMS before 2B is generated on the 14th, then file and pay"),
   ].sort((a, b) => a.date.localeCompare(b.date));
 }

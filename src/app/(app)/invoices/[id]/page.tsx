@@ -6,6 +6,7 @@ import { ArrowLeft, Copy, Mail, MessageCircle, Pencil, Printer, Trash2 } from "l
 import { useAuth, useData } from "@/components/auth-provider";
 import { InvoiceStatus } from "@/components/status";
 import { Money } from "@/components/finance-ui";
+import { UpiQr } from "@/components/upi-qr";
 import { Button, ErrorNote, Loading, useToast } from "@/components/ui";
 import { STATES } from "@/lib/gst";
 import { fmtDate, money, today } from "@/lib/format";
@@ -32,12 +33,20 @@ function inWords(n: number) {
 type Detail = { invoice: Invoice; org: Org; customer: Party | null; creditNotes: CreditNote[]; payments: PaymentRow[] };
 
 /** Prefilled WhatsApp / email text (opens the user's own app; no messaging provider needed). */
+/** How to pay: Razorpay link, UPI ID and bank details, whichever the business has set up. */
+function payLines(inv: Invoice, org: Org) {
+  const out: string[] = [];
+  if (inv.paymentLink) out.push(`Pay online (UPI, card, net banking): ${inv.paymentLink}`);
+  if (org.upiId) out.push(`UPI: ${org.upiId}`);
+  if (org.bankAccount && org.bankIfsc) out.push(`Bank transfer: ${org.name}, A/c ${org.bankAccount}, IFSC ${org.bankIfsc}${org.bankName ? `, ${org.bankName}` : ""}`);
+  return out.length ? `\n\n${out.join("\n")}` : "";
+}
 function shareText(inv: Invoice, org: Org) {
-  return `Dear ${inv.customerName},\n\nPlease find invoice ${inv.number} dated ${fmtDate(inv.issueDate)} for ${money(inv.total)}, due on ${fmtDate(inv.dueDate)}.${inv.paymentLink ? `\n\nPay securely by UPI, card or net banking: ${inv.paymentLink}` : ""}\n\nThe PDF copy is attached. Thank you for your business!\n${org.name}${org.gstin ? `\nGSTIN ${org.gstin}` : ""}`;
+  return `Dear ${inv.customerName},\n\nInvoice ${inv.number} dated ${fmtDate(inv.issueDate)}\nAmount: ${money(inv.total)}\nDue on: ${fmtDate(inv.dueDate)}${payLines(inv, org)}\n\nPlease reply here if you need the PDF copy. Thank you for your business!\n${org.name}${org.gstin ? `\nGSTIN ${org.gstin}` : ""}`;
 }
 function reminderText(inv: Invoice, org: Org, balance: number) {
   const overdue = inv.dueDate < today();
-  return `Dear ${inv.customerName},\n\nThis is a ${overdue ? "reminder that" : "gentle reminder that"} invoice ${inv.number} dated ${fmtDate(inv.issueDate)} has a balance of ${money(balance)}, ${overdue ? "which was" : ""} due on ${fmtDate(inv.dueDate)}.${inv.paymentLink ? `\n\nPay online: ${inv.paymentLink}` : ""}\n\nThank you,\n${org.name}`;
+  return `Dear ${inv.customerName},\n\nThis is a ${overdue ? "reminder that" : "gentle reminder that"} invoice ${inv.number} dated ${fmtDate(inv.issueDate)} has a balance of ${money(balance)}, ${overdue ? "which was " : ""}due on ${fmtDate(inv.dueDate)}.${payLines(inv, org)}\n\nThank you,\n${org.name}`;
 }
 
 export default function InvoiceDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -85,7 +94,7 @@ export default function InvoiceDetail({ params }: { params: Promise<{ id: string
             <Button variant="danger" loading={busy === "delete"} onClick={remove}><Trash2 className="size-4" />Delete</Button>
           </>}
           {canUpdate && inv.status === "sent" && <>
-            <Link href={`/payments-received/new?invoice=${inv.id}`} className="inline-flex h-9 items-center rounded-md bg-accent px-3.5 text-sm font-medium text-on-accent hover:bg-accent-hover">Record Payment</Link>
+            <Link href={`/payments-received/new?invoice=${inv.id}`} className="inline-flex h-9 items-center rounded-md bg-accent px-3.5 text-sm font-medium text-on-accent hover:bg-accent-hover">Record payment</Link>
             <Link href={`/credit-notes/new?invoice=${inv.id}`} className="inline-flex h-9 items-center rounded-md border border-line px-3 text-sm hover:bg-canvas">Create Credit Note</Link>
           </>}
           {inv.status === "sent" && <>
@@ -110,7 +119,7 @@ export default function InvoiceDetail({ params }: { params: Promise<{ id: string
       <div className="paper mx-auto max-w-4xl rounded-lg border border-line p-8 shadow-sm print:border-0 print:p-0 print:shadow-none">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-5">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-widest text-accent">Tax invoice</div>
+            <div className="flex items-baseline gap-3"><span className="text-xs font-semibold uppercase tracking-widest text-accent">Tax invoice</span><span className="text-[11px] uppercase tracking-wide text-muted">Original for recipient</span></div>
             <div className="mt-1 text-xl font-semibold">{org.name}</div>
             <div className="max-w-xs text-sm text-muted">{org.address}</div>
             <div className="mt-1 text-sm">GSTIN <span className="font-medium">{org.gstin}</span></div>
@@ -127,6 +136,7 @@ export default function InvoiceDetail({ params }: { params: Promise<{ id: string
             <div className="text-xs uppercase tracking-wide text-muted">Bill to</div>
             <div className="mt-1 font-medium">{inv.customerName}</div>
             <div>{inv.customerGstin ? `GSTIN ${inv.customerGstin}` : "Unregistered customer"}</div>
+            {customer?.pan && <div className="text-muted">PAN {customer.pan}</div>}
           </div>
           <div className="sm:text-right">
             <div className="text-xs uppercase tracking-wide text-muted">Place of supply</div>
@@ -150,6 +160,21 @@ export default function InvoiceDetail({ params }: { params: Promise<{ id: string
             <div className="mt-1">{inWords(inv.total)}</div>
             {inv.notes && <div className="mt-3 text-muted">{inv.notes}</div>}
             {inv.paymentLink && inv.status === "sent" && <div className="mt-3 text-xs">Pay online: <span className="text-accent">{inv.paymentLink}</span></div>}
+            {(org.bankAccount || org.upiId) && (
+              <div className="mt-4 space-y-3">
+                {org.bankAccount && (
+                  <div className="text-xs leading-relaxed">
+                    <div className="uppercase tracking-wide text-muted">Bank details</div>
+                    <div>{org.name}</div>
+                    <div>A/c {org.bankAccount}{org.bankIfsc && ` · IFSC ${org.bankIfsc}`}</div>
+                    {org.bankName && <div className="text-muted">{org.bankName}</div>}
+                  </div>
+                )}
+                {org.upiId && inv.status !== "void" && (inv.status === "draft" || balance > 0) && (
+                  <UpiQr upiId={org.upiId} payee={org.name} amount={inv.status === "draft" ? inv.total : balance} note={`Invoice ${inv.number}`} />
+                )}
+              </div>
+            )}
           </div>
           <dl className="num w-64 space-y-1 text-sm">
             <div className="flex justify-between"><dt className="text-muted">Taxable value</dt><dd>{money(inv.subtotal)}</dd></div>
@@ -157,13 +182,17 @@ export default function InvoiceDetail({ params }: { params: Promise<{ id: string
               <div className="flex justify-between"><dt className="text-muted">CGST</dt><dd>{money(inv.cgst)}</dd></div>
               <div className="flex justify-between"><dt className="text-muted">SGST</dt><dd>{money(inv.sgst)}</dd></div>
             </> : <div className="flex justify-between"><dt className="text-muted">IGST</dt><dd>{money(inv.igst)}</dd></div>}
+            {inv.roundOff ? <div className="flex justify-between"><dt className="text-muted">Round off</dt><dd>{inv.roundOff > 0 ? "+" : "−"}{money(Math.abs(inv.roundOff))}</dd></div> : null}
             <div className="flex justify-between border-t border-line pt-1 text-base font-semibold"><dt>Total</dt><dd>{money(inv.total)}</dd></div>
             {inv.amountPaid > 0 && <div className="flex justify-between text-muted"><dt>Payments received</dt><dd>({money(inv.amountPaid)})</dd></div>}
             {inv.amountCredited > 0 && <div className="flex justify-between text-muted"><dt>Credits applied</dt><dd>({money(inv.amountCredited)})</dd></div>}
             {inv.status !== "draft" && <div className="flex justify-between font-semibold"><dt>Balance due</dt><dd>{money(balance)}</dd></div>}
           </dl>
         </div>
-        <p className="mt-8 text-xs text-muted">e-Invoice IRN and QR code appear here once a GSP integration is connected. This is a computer-generated invoice.</p>
+        <div className="mt-10 flex flex-wrap items-end justify-between gap-4 text-xs text-muted">
+          <p className="max-w-md">This is a computer-generated invoice. Businesses with turnover above ₹5 crore must also report B2B invoices to the IRP for an IRN and QR code (e-invoicing); connect a GSP to add them here.</p>
+          <div className="text-right"><div className="mb-8 text-ink">For {org.name}</div><div className="border-t border-line pt-1">Authorised signatory</div></div>
+        </div>
       </div>
 
       {(payments.length > 0 || creditNotes.length > 0) && (

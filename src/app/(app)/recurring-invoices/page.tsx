@@ -52,7 +52,7 @@ function ProfileModal({ existing, onClose, onSaved }: { existing?: RecurringProf
           <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" checked={f.autoSend} onChange={(e) => setF({ ...f, autoSend: e.target.checked })} />Send automatically (else save as draft)</label>
           <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />Active</label>
         </div>
-        <LineItemsEditor showHsn catalog={catalog ?? []} items={items} onChange={setItems} supplierState={org?.stateCode ?? ""} placeOfSupply={customer?.stateCode ?? org?.stateCode ?? ""} />
+        <LineItemsEditor showHsn catalog={catalog ?? []} items={items} onChange={setItems} supplierState={org?.stateCode ?? ""} placeOfSupply={customer?.stateCode ?? org?.stateCode ?? ""} date={today()} roundOff={org?.roundOff !== false} />
       </form>
     </Modal>
   );
@@ -78,7 +78,7 @@ export default function RecurringPage() {
 
   return (
     <Guard need="books:read">
-      <ListHeader views={[{ value: "all", label: "All Recurring Invoices" }, { value: "active", label: "Active" }, { value: "stopped", label: "Stopped" }]} view={view} onView={setView}
+      <ListHeader views={[{ value: "all", label: "All recurring invoices" }, { value: "active", label: "Active" }, { value: "stopped", label: "Stopped" }]} view={view} onView={setView}
         menu={writable ? [{ label: "New recurring invoice", onClick: () => setEditing("new") }] : undefined} />
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-canvas px-6 py-2.5 text-sm">
         <span className="text-muted">Invoices are created automatically every day (Vercel Cron at 6:00 am IST). You can also run due profiles now.</span>

@@ -13,7 +13,8 @@ import { billBalance, invoiceBalance, type Bill, type Invoice, type Party } from
 
 export function PartyModal({ type, existing, onClose, onSaved }: { type: Party["type"]; existing?: Party; onClose: () => void; onSaved: (p: Party) => void }) {
   const { api, org } = useAuth();
-  const [f, setF] = useState({ name: existing?.name ?? "", gstin: existing?.gstin ?? "", stateCode: existing?.stateCode ?? org?.stateCode ?? "29", email: existing?.email ?? "", phone: existing?.phone ?? "", pan: existing?.pan ?? "" });
+  const [f, setF] = useState({ name: existing?.name ?? "", gstin: existing?.gstin ?? "", stateCode: existing?.stateCode ?? org?.stateCode ?? "29", email: existing?.email ?? "", phone: existing?.phone ?? "", pan: existing?.pan ?? "", msme: existing?.msme ?? "", udyam: existing?.udyam ?? "" });
+  const [agreement, setAgreement] = useState(Boolean(existing?.msmeAgreement));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const g = f.gstin.trim().toUpperCase();
@@ -23,7 +24,7 @@ export function PartyModal({ type, existing, onClose, onSaved }: { type: Party["
     <Modal open onClose={onClose} title={`${existing ? "Edit" : "New"} ${type === "customer" ? "Customer" : "Vendor"}`} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} disabled={!gstOk} form="party-form">Save</Button></>}>
       <form id="party-form" className="grid grid-cols-2 gap-3" onSubmit={async (e) => {
         e.preventDefault(); setBusy(true); setError(null);
-        try { onSaved(existing ? await api<Party>(`/api/parties/${existing.id}`, { method: "PATCH", json: { ...f, gstin: g } }) : await api<Party>("/api/parties", { method: "POST", json: { ...f, type, gstin: g } })); }
+        try { onSaved(existing ? await api<Party>(`/api/parties/${existing.id}`, { method: "PATCH", json: { ...f, gstin: g, msmeAgreement: agreement } }) : await api<Party>("/api/parties", { method: "POST", json: { ...f, type, gstin: g, msmeAgreement: agreement } })); }
         catch (err) { setError((err as Error).message); } finally { setBusy(false); }
       }}>
         <div className="col-span-2"><ErrorNote message={error} /></div>
@@ -35,6 +36,26 @@ export function PartyModal({ type, existing, onClose, onSaved }: { type: Party["
         <Field label="PAN"><Input value={f.pan} onChange={(e) => set("pan", e.target.value)} className="uppercase" /></Field>
         <Field label="Email"><Input type="email" value={f.email} onChange={(e) => set("email", e.target.value)} /></Field>
         <Field label="Phone"><Input value={f.phone} onChange={(e) => set("phone", e.target.value)} /></Field>
+        {type === "vendor" && (
+          <fieldset className="col-span-2 mt-1 grid grid-cols-2 gap-3 rounded-lg border border-line p-3">
+            <legend className="px-1 text-xs font-medium text-muted">MSME (Udyam) status</legend>
+            <Field label="Enterprise type" hint="Micro and small vendors must be paid within 15 or 45 days (Sec 43B(h))">
+              <Select value={f.msme} onChange={(e) => set("msme", e.target.value)}>
+                <option value="">Not MSME / not registered</option>
+                <option value="micro">Micro</option>
+                <option value="small">Small</option>
+                <option value="medium">Medium (rule does not apply)</option>
+              </Select>
+            </Field>
+            <Field label="Udyam number" hint="UDYAM-XX-00-0000000"><Input value={f.udyam} disabled={!f.msme} onChange={(e) => set("udyam", e.target.value)} className="uppercase" /></Field>
+            {(f.msme === "micro" || f.msme === "small") && (
+              <label className="col-span-2 flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={agreement} onChange={(e) => setAgreement(e.target.checked)} className="size-4 accent-[var(--accent)]" />
+                We have a written agreement with this vendor (allows up to 45 days instead of 15)
+              </label>
+            )}
+          </fieldset>
+        )}
       </form>
     </Modal>
   );
@@ -91,14 +112,14 @@ export function PartiesView({ type }: { type: Party["type"] }) {
               detail={type === "customer" ? "Save a customer once, with their GSTIN, and every invoice fills in their address and the right GST split." : "Save vendors with their GSTIN so bills claim input tax credit correctly."}
               action={user && can(user.role, "party:write") ? { label: `New ${type}`, href: `${base}?new=1` } : undefined} />
       ) : (
-        <ListTable head={<tr><Th>Name</Th><Th>GSTIN</Th><Th>Place of Supply</Th><Th>Email</Th><Th>Phone</Th><Th className="hidden lg:table-cell">Last 6 months</Th><Th right>{type === "customer" ? <Term>Receivables</Term> : <Term>Payables</Term>}</Th></tr>}>
+        <ListTable head={<tr><Th>Name</Th><Th className="hidden sm:table-cell">GSTIN</Th><Th className="hidden xl:table-cell">State</Th><Th className="hidden 2xl:table-cell">Email</Th><Th className="hidden lg:table-cell">Phone</Th><Th className="hidden lg:table-cell">Last 6 months</Th><Th right>{type === "customer" ? <Term align="right">To receive</Term> : <Term align="right">To pay</Term>}</Th></tr>}>
           {rows.map((p) => (
             <tr key={p.id}>
-              <Td className="font-medium text-accent"><Link href={`${base}/${p.id}`}>{p.name}</Link></Td>
-              <Td>{p.gstin ? <span className="font-mono text-xs">{p.gstin}</span> : <Badge>Unregistered</Badge>}</Td>
-              <Td className="text-muted">{STATES[p.stateCode]}</Td>
-              <Td className="text-muted">{p.email ?? "—"}</Td>
-              <Td className="text-muted">{p.phone ?? "—"}</Td>
+              <Td className="font-medium text-accent"><Link href={`${base}/${p.id}`}>{p.name}</Link>{(p.msme === "micro" || p.msme === "small") && <span className="ml-1.5" title={`${p.msme} enterprise${p.udyam ? ` · ${p.udyam}` : ""}: pay within ${p.msmeAgreement ? "45" : "15"} days (Sec 43B(h))`}><Badge tone="amber">MSME</Badge></span>}</Td>
+              <Td className="hidden sm:table-cell">{p.gstin ? <span className="font-mono text-xs">{p.gstin}</span> : <Badge>Unregistered</Badge>}</Td>
+              <Td className="hidden text-muted xl:table-cell">{STATES[p.stateCode]}</Td>
+              <Td className="hidden max-w-56 truncate text-muted 2xl:table-cell">{p.email ?? "—"}</Td>
+              <Td className="hidden whitespace-nowrap text-muted lg:table-cell">{p.phone ?? "—"}</Td>
               <Td className="hidden lg:table-cell"><Sparkline values={trend.get(p.id) ?? []} color={type === "customer" ? "var(--chart-in)" : "var(--chart-out)"} label={`${type === "customer" ? "Invoiced" : "Billed"} per month, last 6 months`} /></Td>
               <Td right><Money value={owed.get(p.id) ?? 0} className={(owed.get(p.id) ?? 0) === 0 ? "font-normal text-muted" : "font-medium"} /></Td>
             </tr>

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import {
-  Home, ShoppingCart, ShoppingBag, Landmark, BarChart3, Settings, CreditCard, Wallet, Search, LogOut, ChevronDown, ChevronRight, Plus, Bell, Package, Loader2,
+  Home, ShoppingCart, ShoppingBag, Landmark, BarChart3, Settings, Search, LogOut, ChevronDown, ChevronRight, Plus, Bell, Package, Loader2,
   Moon, Sun, Monitor, Keyboard, FileText, Receipt, X, Rows3, Rows4,
 } from "lucide-react";
 import { useAuth } from "./auth-provider";
@@ -23,16 +23,16 @@ const NAV: Group[] = [
     key: "sales", label: "Sales", icon: ShoppingCart, need: "books:read", children: [
       { href: "/customers", label: "Customers", newHref: "/customers?new=1", newNeed: "party:write", search: "Customers" },
       { href: "/invoices", label: "Invoices", newHref: "/invoices/new", newNeed: "invoice:create", search: "Invoices" },
-      { href: "/recurring-invoices", label: "Recurring Invoices", search: "Recurring Invoices" },
-      { href: "/payments-received", label: "Payments Received", newHref: "/payments-received/new", newNeed: "invoice:update", search: "Payments Received" },
-      { href: "/credit-notes", label: "Credit Notes", newHref: "/credit-notes/new", newNeed: "invoice:update", search: "Credit Notes" },
+      { href: "/recurring-invoices", label: "Recurring invoices", search: "Recurring invoices" },
+      { href: "/payments-received", label: "Payments received", newHref: "/payments-received/new", newNeed: "invoice:update", search: "Payments received" },
+      { href: "/credit-notes", label: "Credit notes", newHref: "/credit-notes/new", newNeed: "invoice:update", search: "Credit notes" },
     ],
   },
   {
     key: "purchases", label: "Purchases", icon: ShoppingBag, need: "books:read", children: [
       { href: "/vendors", label: "Vendors", newHref: "/vendors?new=1", newNeed: "party:write", search: "Vendors" },
       { href: "/bills", label: "Bills", newHref: "/bills/new", newNeed: "bill:create", search: "Bills" },
-      { href: "/payments-made", label: "Payments Made", newHref: "/payments-made/new", newNeed: "bill:pay", search: "Payments Made" },
+      { href: "/payments-made", label: "Payments made", newHref: "/payments-made/new", newNeed: "bill:pay", search: "Payments made" },
     ],
   },
   {
@@ -43,20 +43,15 @@ const NAV: Group[] = [
   },
   { key: "reports", label: "Reports", icon: BarChart3, href: "/reports", need: "reports:read", search: "Reports" },
 ];
-const APPS: Group[] = [
-  { key: "cards", label: "Corporate Cards", icon: CreditCard, soon: true },
-  { key: "payroll", label: "Payroll", icon: Wallet, soon: true },
-];
-
 const QUICK_CREATE: { label: string; href: string; need: Action; group: string }[] = [
   { group: "Sales", label: "Invoice", href: "/invoices/new", need: "invoice:create" },
-  { group: "Sales", label: "Customer Payment", href: "/payments-received/new", need: "invoice:update" },
+  { group: "Sales", label: "Customer payment", href: "/payments-received/new", need: "invoice:update" },
   { group: "Sales", label: "Customer", href: "/customers?new=1", need: "party:write" },
   { group: "Purchases", label: "Bill", href: "/bills/new", need: "bill:create" },
-  { group: "Purchases", label: "Vendor Payment", href: "/payments-made/new", need: "bill:pay" },
+  { group: "Purchases", label: "Vendor payment", href: "/payments-made/new", need: "bill:pay" },
   { group: "Purchases", label: "Vendor", href: "/vendors?new=1", need: "party:write" },
-  { group: "Sales", label: "Credit Note", href: "/credit-notes/new", need: "invoice:update" },
-  { group: "Banking", label: "Transaction / Expense", href: "/transactions?new=1", need: "txn:create" },
+  { group: "Sales", label: "Credit note", href: "/credit-notes/new", need: "invoice:update" },
+  { group: "Banking", label: "Expense or transaction", href: "/transactions?new=1", need: "txn:create" },
   { group: "Banking", label: "Item", href: "/items", need: "party:write" },
 ];
 
@@ -138,18 +133,19 @@ function Notifications() {
     const t = setInterval(load, 60_000);
     return () => { alive = false; clearInterval(t); };
   }, [api, status]);
-  const urgent = (items ?? []).filter((i) => i.severity !== "low").length;
+  const count = items?.length ?? 0;
+  const urgent = (items ?? []).some((i) => i.severity === "high");
   return (
     <div className="relative">
-      <button onClick={() => setOpen(!open)} className="relative text-white/80 hover:text-white" aria-label={`Notifications (${urgent})`}>
+      <button onClick={() => setOpen(!open)} className="relative text-white/80 hover:text-white" aria-label={`Needs attention (${count})`}>
         <Bell className="size-[18px]" />
-        {urgent > 0 && <span className="absolute -right-2 -top-1.5 min-w-4 rounded-full bg-out px-1 text-center text-[10px] font-semibold leading-4 text-on-accent">{urgent > 99 ? "99+" : urgent}</span>}
+        {count > 0 && <span className={cx("absolute -right-2 -top-1.5 min-w-4 rounded-full px-1 text-center text-[10px] font-semibold leading-4", urgent ? "bg-out text-on-accent" : "bg-white/80 text-navy")}>{count > 99 ? "99+" : count}</span>}
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="anim-pop absolute right-0 top-full z-50 mt-3 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-line bg-raised text-ink shadow-xl">
-            <div className="flex items-center justify-between border-b border-line px-4 py-2.5"><span className="text-sm font-semibold">Needs attention</span><Link href="/" onClick={() => setOpen(false)} className="text-xs text-accent">Open inbox</Link></div>
+            <div className="flex items-center justify-between border-b border-line px-4 py-2.5"><span className="text-sm font-semibold">Needs attention · {count}</span><Link href="/" onClick={() => setOpen(false)} className="text-xs text-accent">Open dashboard</Link></div>
             <ul className="max-h-96 divide-y divide-line overflow-y-auto">
               {(items ?? []).slice(0, 12).map((it, k) => (
                 <li key={k}><Link href={it.href} onClick={() => setOpen(false)} className="block px-4 py-2.5 hover:bg-hover">
@@ -197,7 +193,7 @@ function QuickCreate({ role }: { role: Role }) {
 }
 
 function UserMenu() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, mode, demoRole, setDemoRole } = useAuth();
   const [open, setOpen] = useState(false);
   if (!user) return null;
   const initials = user.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -210,7 +206,13 @@ function UserMenu() {
           <div className="anim-pop absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-line bg-raised p-3 text-ink shadow-xl">
             <div className="text-sm font-medium">{user.name}</div>
             <div className="text-xs text-muted">{user.email}</div>
-            <div className="mt-1 text-xs text-muted">Role: {ROLES.find((r) => r.value === user.role)?.label}</div>
+            {mode === "demo" ? (
+              <label className="mt-2 block text-xs text-muted">Demo: view the app as
+                <select value={demoRole} onChange={(e) => setDemoRole(e.target.value as Role)} className="mt-1 block h-9 w-full rounded-md border border-line bg-canvas px-2 text-sm text-ink">
+                  {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+              </label>
+            ) : <div className="mt-1 text-xs text-muted">Role: {ROLES.find((r) => r.value === user.role)?.label}</div>}
             <ThemePicker />
             <DensityPicker />
             <button onClick={() => { setOpen(false); window.dispatchEvent(new Event("ledgerly-shortcuts")); }} className="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-hover"><Keyboard className="size-4" />Keyboard shortcuts <kbd className="ml-auto">?</kbd></button>
@@ -335,6 +337,8 @@ function ThemeQuickToggle() {
 
 /** Phones get a thumb-reachable bottom bar instead of the sidebar. */
 function MobileTabBar({ isActive, onMore, role }: { isActive: (h: string) => boolean; onMore: () => void; role: Role }) {
+  const path = usePathname();
+  if (/\/(new|edit)$/.test(path)) return null; // forms have their own sticky save bar
   const tabs = [
     { href: "/", label: "Home", icon: Home },
     ...(can(role, "books:read") ? [{ href: "/invoices", label: "Invoices", icon: FileText }, { href: "/bills", label: "Bills", icon: Receipt }] : []),
@@ -353,16 +357,18 @@ function MobileTabBar({ isActive, onMore, role }: { isActive: (h: string) => boo
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { status, user, org, mode, demoRole, setDemoRole } = useAuth();
+  const { status, user, org, mode } = useAuth();
   const router = useRouter();
   const path = usePathname();
   const [palette, setPalette] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    if (status === "signed_out" || status === "config_error") router.replace("/login");
+    // Visitors who are not signed in see the public homepage first; deep links go straight to sign-in.
+    if (status === "signed_out") router.replace(path === "/" ? "/welcome" : "/login");
+    if (status === "config_error") router.replace("/login");
     if (status === "needs_org") router.replace("/onboarding");
-  }, [status, router]);
+  }, [status, router, path]);
 
   // Keyboard-first: "/" or Ctrl+K search, "g x" go to, "n x" new, "?" shows the list.
   useEffect(() => {
@@ -407,15 +413,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <button onClick={() => setPalette(true)} aria-label="Search" className="ml-2 flex h-8 w-8 shrink-0 items-center sm:w-full sm:max-w-sm sm:shrink md:ml-4 gap-2 rounded-md border border-white/15 bg-navy-2 px-3 text-sm text-white/60 hover:border-white/30">
           <Search className="size-4 shrink-0" /><span className="hidden truncate sm:inline">Search in {scope}</span><kbd className="ml-auto hidden border-white/20 bg-transparent text-white/50 sm:inline">/</kbd>
         </button>
-        <div className="ml-auto flex items-center gap-4 pr-4">
-          {mode === "demo" && (
-            <label className="flex items-center gap-1.5 text-xs text-white/70">
-              <span className="hidden md:inline">Demo · view as</span>
-              <select value={demoRole} onChange={(e) => setDemoRole(e.target.value as Role)} className="h-7 rounded border border-white/20 bg-navy-2 px-1.5 text-xs text-white">
-                {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-              </select>
-            </label>
-          )}
+        <div className="ml-auto flex items-center gap-3 pr-3 sm:gap-4 sm:pr-4">
+          {mode === "demo" && <span className="hidden rounded border border-white/25 px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-white/70 sm:inline" title="Sample data. Switch role from the account menu.">Demo</span>}
           <Link href="/settings" className="hidden text-sm text-white/90 hover:text-white lg:block" title="Business settings">{org.name}</Link>
           <QuickCreate role={user.role} />
           <Notifications />
@@ -463,11 +462,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               );
             })}
-            <div className="px-3 pb-1 pt-5 text-[11px] font-medium uppercase tracking-wider text-muted">Coming soon</div>
-            {APPS.map((a) => {
-              const Icon = a.icon;
-              return <div key={a.key} className="flex items-center gap-2.5 px-3 py-2 text-muted/60" title="Planned for phase 2"><Icon className="size-4" />{a.label}</div>;
-            })}
           </nav>
           <Link href="/settings" className={cx("m-2.5 flex items-center justify-between rounded-md px-3 py-2 text-sm", isActive("/settings") ? "bg-accent-soft font-medium text-accent" : "bg-ink/[0.06] text-ink/85 hover:bg-ink/10")}>
             Settings <ChevronRight className="size-4" />
@@ -475,11 +469,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         <div className="min-w-0 flex-1">
-          <nav className="no-print flex gap-1 overflow-x-auto border-b border-line px-3 py-2 md:hidden">
-            {[{ href: "/", label: "Home" }, ...groups.flatMap((g) => (g.children ?? (g.href ? [{ href: g.href, label: g.label } as Leaf] : [])).filter((c) => !c.need || can(user.role, c.need)))]
-              .filter((v, k, a) => a.findIndex((x) => x.href === v.href) === k)
-              .map((n) => <Link key={n.href} href={n.href} className={cx("whitespace-nowrap rounded px-2.5 py-1 text-sm", isActive(n.href) ? "bg-accent text-on-accent" : "text-muted")}>{n.label}</Link>)}
-          </nav>
           <main className="pb-16 md:pb-0">
             <Suspense fallback={<Loading />}>{children}</Suspense>
           </main>

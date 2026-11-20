@@ -5,7 +5,7 @@ import {
   recordInvoicePayment, reimburseClaim, saveItem, saveRecurring, updateTransaction,
 } from "./services";
 import { addDays, today } from "../format";
-import type { BankLine, Member, Org, Party, Role, SessionUser, Transaction } from "../types";
+import type { BankLine, Bill, Member, Org, Party, Role, SessionUser, Transaction } from "../types";
 
 export const DEMO_ORG_ID = "demo";
 
@@ -42,7 +42,7 @@ export function ensureDemoOrg(): Promise<void> {
     if (await store.getOrg(DEMO_ORG_ID)) return;
     const org: Org = {
       id: DEMO_ORG_ID, name: "Demo Traders Pvt Ltd", gstin: "29ABCDE1234F1Z5", stateCode: "29",
-      address: "4th Floor, 80 Feet Road, Indiranagar, Bengaluru 560038", approvalThreshold: 100000,
+      address: "4th Floor, 80 Feet Road, Indiranagar, Bengaluru 560038", approvalThreshold: 100000, upiId: "demotraders@hdfcbank", bankName: "HDFC Bank, Indiranagar", bankAccount: "50200012345678", bankIfsc: "HDFC0001234", roundOff: true,
       invoicePrefix: "DT/{FY}/", nextInvoiceNumber: 1, sequences: {}, createdAt: new Date().toISOString(),
     };
     await store.saveOrg(org);
@@ -80,9 +80,9 @@ export async function seedOrgData(orgId: string, uids: { admin: string; finance:
     { name: "Prestige Office Spaces", gstin: "29AAACP1234Q1Z2", email: "accounts@prestige.example", phone: "+919800000001" },
     { name: "Amazon Web Services India", gstin: "27AAJCA5678R1Z9", email: "billing@aws.example" },
     { name: "Bluechip CA Associates", gstin: "29AABFB4321C1Z7", email: "office@bluechipca.example" },
-    { name: "Swift Logistics", gstin: "33AAGCS9876L1Z4", phone: "+919800000004" },
-    { name: "Infini Office Supplies", gstin: "29AAFCI2468M1Z3" },
-    { name: "Ravi Electricals", stateCode: "29", phone: "+919800000006" }, // unregistered: no input GST credit
+    { name: "Swift Logistics", gstin: "33AAGCS9876L1Z4", phone: "+919800000004", msme: "small" as const, udyam: "UDYAM-TN-02-0098765", msmeAgreement: true },
+    { name: "Infini Office Supplies", gstin: "29AAFCI2468M1Z3", msme: "micro" as const, udyam: "UDYAM-KR-03-0012345" }, // MSME: 15-day rule
+    { name: "Ravi Electricals", stateCode: "29", phone: "+919800000006", msme: "micro" as const }, // unregistered: no input GST credit
   ]) vendors.push(await createParty(system, { type: "vendor", ...v }));
   const customers: Party[] = [];
   for (const c of [
@@ -113,7 +113,7 @@ export async function seedOrgData(orgId: string, uids: { admin: string; finance:
 
     bankTxns.push(await createTransaction(finance, { date: safe(dayOf(m, 1)), description: "Salary payout - monthly payroll", amount: between(560000, 640000), direction: "out", source: "bank", receipt: true }));
 
-    const rent = await createBill(finance, { vendorId: landlord.id, billNumber: `PO-RENT-${dayOf(m, 1).slice(0, 7)}`, billDate: dayOf(m, 1), dueDate: dayOf(m, 5), account: "5100", items: [{ description: "Office rent", qty: 1, rate: 125000, gstRate: 18 }] });
+    const rent = await createBill(finance, { vendorId: landlord.id, billNumber: `PO-RENT-${dayOf(m, 1).slice(0, 7)}`, billDate: dayOf(m, 1), dueDate: dayOf(m, 5), account: "5100", items: [{ description: "Office rent", qty: 1, rate: 125000, gstRate: 18 }], tdsSection: "rent-lb" });
     await decideBill(checker, rent.id, "approved");
     if (rent.approvalsRequired > 1) await decideBill(finalChecker, rent.id, "approved");
     await payBill(finance, rent.id, { date: safe(dayOf(m, 5)), mode: "Bank transfer (NEFT/RTGS/IMPS)" });
@@ -157,15 +157,26 @@ export async function seedOrgData(orgId: string, uids: { admin: string; finance:
     }
 
     if (!current) {
-      const cogs = await createBill(finance, { vendorId: logistics.id, billNumber: `SL/${1000 + 11 - m}`, billDate: dayOf(m, 15), dueDate: dayOf(m, 28), account: "5800", items: [{ description: "Inbound freight", qty: 1, rate: between(60000, 95000), gstRate: 12 }] });
+      const cogs = await createBill(finance, { vendorId: logistics.id, billNumber: `SL/${1000 + 11 - m}`, billDate: dayOf(m, 15), dueDate: dayOf(m, 28), account: "5800", items: [{ description: "Inbound freight", qty: 1, rate: between(60000, 95000), gstRate: 18 }] });
       await decideBill(checker, cogs.id, "approved");
       if (cogs.approvalsRequired > 1) await decideBill(finalChecker, cogs.id, "approved");
       await payBill(finance, cogs.id, { date: dayOf(m, 27), mode: "Bank transfer (NEFT/RTGS/IMPS)" });
     }
     if (m % 3 === 0 && !current) {
-      const fee = await createBill(finance, { vendorId: ca.id, billNumber: `BCA-${dayOf(m, 10).slice(0, 7)}`, billDate: dayOf(m, 10), dueDate: dayOf(m, 20), account: "5700", items: [{ description: "Quarterly accounting and GST filing", qty: 1, rate: 45000, gstRate: 18 }] });
+      const fee = await createBill(finance, { vendorId: ca.id, billNumber: `BCA-${dayOf(m, 10).slice(0, 7)}`, billDate: dayOf(m, 10), dueDate: dayOf(m, 20), account: "5700", items: [{ description: "Quarterly accounting and GST filing", qty: 1, rate: 45000, gstRate: 18 }], tdsSection: "prof" });
       await decideBill(checker, fee.id, "approved");
       await payBill(finance, fee.id, { date: dayOf(m, 20), mode: "Bank transfer (NEFT/RTGS/IMPS)" });
+    }
+  }
+
+  // TDS deducted each month is deposited with the government by the 7th of the next month (challan).
+  const allBills = await getStore().list<Bill>(orgId, "bills");
+  for (let m = 11; m >= 1; m--) {
+    const month = dayOf(m, 1).slice(0, 7);
+    const tds = allBills.filter((b) => b.billDate.startsWith(month) && b.status !== "rejected").reduce((a, b) => a + (b.tdsAmount ?? 0), 0);
+    const date = dayOf(m - 1, 7);
+    if (tds > 0 && date <= now) {
+      await createTransaction(finance, { date, description: `TDS deposit for ${month} (challan, Sec 393)`, partyName: "Income Tax Department", amount: tds, direction: "out", account: "2300", source: "bank", receipt: true });
     }
   }
 
@@ -176,8 +187,8 @@ export async function seedOrgData(orgId: string, uids: { admin: string; finance:
 
   // Open items for the inbox.
   await createBill(finance, { vendorId: supplies.id, billNumber: "IOS/7781", billDate: addDays(now, -3), dueDate: addDays(now, 10), account: "5500", items: [{ description: "Ergonomic chairs", qty: 6, rate: 14500, gstRate: 18 }] });
-  await createBill(finance, { vendorId: logistics.id, billNumber: "SL/2042", billDate: addDays(now, -2), dueDate: addDays(now, 14), account: "5800", items: [{ description: "Bulk inbound freight, festive season", qty: 1, rate: 240000, gstRate: 12 }] });
-  const half = await createBill(finance, { vendorId: ca.id, billNumber: "BCA-AUDIT", billDate: addDays(now, -6), dueDate: addDays(now, 4), account: "5700", items: [{ description: "Statutory audit fees", qty: 1, rate: 150000, gstRate: 18 }] });
+  await createBill(finance, { vendorId: logistics.id, billNumber: "SL/2042", billDate: addDays(now, -2), dueDate: addDays(now, 14), account: "5800", items: [{ description: "Bulk inbound freight, festive season", qty: 1, rate: 240000, gstRate: 18 }] });
+  const half = await createBill(finance, { vendorId: ca.id, billNumber: "BCA-AUDIT", billDate: addDays(now, -6), dueDate: addDays(now, 4), account: "5700", items: [{ description: "Statutory audit fees", qty: 1, rate: 150000, gstRate: 18 }], tdsSection: "prof" });
   await decideBill(checker, half.id, "approved"); // waits for the admin's final approval
   const due = await createBill(finance, { vendorId: supplies.id, billNumber: "IOS/7702", billDate: addDays(now, -12), dueDate: addDays(now, 2), account: "5500", items: [{ description: "Printer cartridges and paper", qty: 1, rate: 18500, gstRate: 18 }] });
   await decideBill(checker, due.id, "approved");

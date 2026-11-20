@@ -12,7 +12,7 @@ import { invoiceBalance, type Invoice } from "@/lib/types";
 
 type View = "all" | "draft" | "sent" | "overdue" | "paid" | "void";
 const VIEWS: { value: View; label: string }[] = [
-  { value: "all", label: "All Invoices" }, { value: "draft", label: "Draft" }, { value: "sent", label: "Unpaid" },
+  { value: "all", label: "All invoices" }, { value: "draft", label: "Draft" }, { value: "sent", label: "Unpaid" },
   { value: "overdue", label: "Overdue" }, { value: "paid", label: "Paid / Closed" }, { value: "void", label: "Void" },
 ];
 
@@ -38,15 +38,15 @@ export default function InvoicesPage() {
       {loading && !data ? <Loading /> : rows.length === 0 ? (data?.length ?? 0) === 0
         ? <Empty icon={FileText} title="Send your first GST invoice" detail="Pick a customer and items. CGST/SGST or IGST is worked out for you, with a Razorpay link to collect payment." action={user && can(user.role, "invoice:create") ? { label: "New invoice", href: "/invoices/new" } : undefined} secondary={{ label: "Add a customer first", href: "/customers?new=1" }} />
         : <Empty title="No invoices in this view" detail="Nothing matches this filter right now." action={{ label: "Show all invoices", onClick: () => setView("all") }} /> : (
-        <ListTable head={<tr><Th>Date</Th><Th>Invoice#</Th><Th>Customer Name</Th><Th>Status</Th><Th>Due Date</Th><Th right>Amount</Th><Th right>Balance Due</Th></tr>}>
+        <ListTable head={<tr><Th className="hidden md:table-cell">Date</Th><Th className="hidden md:table-cell">Invoice no.</Th><Th>Customer</Th><Th>Status</Th><Th className="hidden md:table-cell">Due date</Th><Th right className="hidden md:table-cell">Amount</Th><Th right>Balance due</Th></tr>}>
           {rows.map((i) => (
             <tr key={i.id} className="cursor-pointer" onClick={() => router.push(`/invoices/${i.id}`)}>
-              <Td className="whitespace-nowrap">{fmtDate(i.issueDate)}</Td>
-              <Td><Link href={`/invoices/${i.id}`} className="text-accent hover:underline" onClick={(e) => e.stopPropagation()}>{i.number}</Link></Td>
-              <Td>{i.customerName}</Td>
+              <Td className="hidden whitespace-nowrap md:table-cell">{fmtDate(i.issueDate)}</Td>
+              <Td className="hidden md:table-cell"><Link href={`/invoices/${i.id}`} className="text-accent hover:underline" onClick={(e) => e.stopPropagation()}>{i.number}</Link></Td>
+              <Td>{i.customerName}<div className="text-xs text-muted md:hidden">{i.status === "draft" ? "Draft" : i.number} · {fmtDate(i.issueDate)}</div></Td>
               <Td><InvoiceStatus inv={i} /></Td>
-              <Td className="whitespace-nowrap">{fmtDate(i.dueDate)}</Td>
-              <Td right>{money(i.total)}</Td>
+              <Td className="hidden whitespace-nowrap md:table-cell">{fmtDate(i.dueDate)}</Td>
+              <Td right className="hidden md:table-cell">{money(i.total)}</Td>
               <Td right>{money(i.status === "draft" ? i.total : invoiceBalance(i))}</Td>
             </tr>
           ))}
