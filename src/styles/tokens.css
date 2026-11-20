@@ -1,0 +1,93 @@
+/*
+ * Ledgerly design tokens.
+ * Every colour in the app comes from here. Components use the semantic Tailwind
+ * names (bg-surface, text-muted, bg-accent, text-out…) – never raw hex – so a
+ * new theme or a white-label palette is a change to this one file.
+ *
+ * Dark ("charcoal") is the default theme. Light is its indigo partner.
+ */
+
+:root {
+  /* surfaces */
+  --canvas: #f6f6f9;        /* page background, sidebars */
+  --surface: #ffffff;       /* cards, tables, forms */
+  --raised: #ffffff;        /* menus, popovers, drawers */
+  --hover: #f1f1fb;         /* row / item hover */
+  --line: #e4e4ec;          /* hairlines */
+  --line-strong: #cfcfdb;
+
+  /* text */
+  --ink: #171721;           /* primary text, 17:1 on surface */
+  --muted: #6b6b7b;         /* secondary text, 5.3:1 on surface */
+
+  /* brand */
+  --accent: #4f5bd5;        /* buttons, links, focus – white text 5.5:1 */
+  --accent-hover: #3f4ac0;
+  --accent-soft: #ecebff;
+  --on-accent: #ffffff;
+
+  /* top bar */
+  --nav: #171721;
+  --nav-2: #262634;
+
+  /* status – only for state, always with an icon or a word */
+  --in: #047857;
+  --out: #b42318;
+  --warn: #b54708;
+  --in-soft: #e8f6ef;
+  --out-soft: #fdecea;
+  --warn-soft: #fdf3e6;
+
+  /* charts (validated colour-blind-safe pair) */
+  --chart-in: #2a78d6;
+  --chart-out: #eb6834;
+  --chart-grid: #eceef3;
+
+  /* shape and depth */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-pop: 0 10px 30px -10px rgb(23 23 33 / 0.25);
+
+  /* density (table cell padding) */
+  --cell-y: 0.75rem;
+
+  color-scheme: light;
+}
+
+.dark {
+  --canvas: #121316;        /* soft charcoal, not pure black */
+  --surface: #1c1e24;
+  --raised: #23262e;
+  --hover: #252836;
+  --line: #2c2f38;
+  --line-strong: #3a3e49;
+
+  --ink: #e6e7eb;           /* 13:1 on surface */
+  --muted: #9a9daa;         /* 6.2:1 on surface */
+
+  --accent: #8b95ff;        /* desaturated indigo, 6:1 on surface */
+  --accent-hover: #a3abff;
+  --accent-soft: #272b47;
+  --on-accent: #121316;     /* dark text on the light accent, 6.7:1 */
+
+  --nav: #0d0e11;
+  --nav-2: #1c1e24;
+
+  --in: #5cc995;
+  --out: #f38b83;
+  --warn: #f0b35a;
+  --in-soft: #17302a;
+  --out-soft: #3a2124;
+  --warn-soft: #382c19;
+
+  --chart-in: #2a78d6;
+  --chart-out: #eb6834;
+  --chart-grid: #2a2d36;
+
+  --shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.6);
+
+  color-scheme: dark;
+}
+
+[data-density="compact"] { --cell-y: 0.4rem; }

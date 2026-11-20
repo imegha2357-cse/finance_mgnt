@@ -1,0 +1,116 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-navy: var(--nav);
+  --color-navy-2: var(--nav-2);
+  --color-in: var(--in);
+  --color-out: var(--out);
+  --color-warn: var(--warn);
+  --color-in-soft: var(--in-soft);
+  --color-out-soft: var(--out-soft);
+  --color-warn-soft: var(--warn-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html, body {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01";
+}
+
+/* Amounts line up in columns everywhere: tables, cards, inputs. */
+.num, td, input[type="number"], input[inputmode="decimal"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Keyboard focus is always visible (WCAG 2.2: 3:1 against the background). */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Table density follows the user's preference. */
+td.cell { padding-top: var(--cell-y); padding-bottom: var(--cell-y); }
+
+/* Recharts picks up the theme instead of hard-coded greys. */
+.recharts-cartesian-grid line { stroke: var(--chart-grid); }
+.recharts-cartesian-axis-tick-value, .recharts-text { fill: var(--muted); }
+.recharts-tooltip-cursor { fill: var(--hover); }
+.recharts-default-tooltip {
+  background: var(--raised) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  box-shadow: var(--shadow-pop);
+}
+.recharts-tooltip-label { color: var(--muted); }
+
+/* Skeleton shimmer for loading states */
+.skeleton {
+  background: linear-gradient(90deg, var(--line) 0%, var(--hover) 50%, var(--line) 100%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+}
+
+/* Motion: only for state changes, and off for people who ask for less. */
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton { animation: shimmer 1.4s ease-in-out infinite; }
+  .anim-pop { animation: pop-in 180ms ease-out; }
+  .anim-slide { animation: slide-up 220ms ease-out; }
+  .anim-flash { animation: flash 1.2s ease-out; }
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@keyframes pop-in { from { opacity: 0; transform: scale(0.97) translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes slide-up { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes flash { from { background: var(--in-soft); } to { background: transparent; } }
+
+@layer base {
+kbd {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  padding: 1px 5px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--canvas);
+  color: var(--muted);
+}
+}
+
+@media print {
+  .no-print { display: none !important; }
+  :root, .dark { --surface: #fff; --canvas: #fff; --ink: #111; --muted: #555; --line: #ddd; }
+  body { background: white; }
+}
+
+/* Documents (invoices) always look like paper, whichever theme the app is in. */
+.paper {
+  --surface: #ffffff; --canvas: #f6f6f9; --raised: #ffffff; --hover: #f1f1fb;
+  --ink: #171721; --muted: #6b6b7b; --line: #e4e4ec; --line-strong: #cfcfdb;
+  --accent: #4f5bd5; --accent-soft: #ecebff; --on-accent: #fff;
+  --in: #047857; --out: #b42318; --warn: #b54708;
+  background: var(--surface);
+  color: var(--ink);
+}
